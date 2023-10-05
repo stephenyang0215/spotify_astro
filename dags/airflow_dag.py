@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from Extract import Extract
-from Load import load_snoflake
+from Load import GET_SONGS_BY_ARTIST, load_snoflake_conn, recommendation_load
 from airflow import DAG
 from airflow.operators.python import PythonOperator
 from airflow.operators.empty import EmptyOperator
@@ -52,20 +52,48 @@ dag = DAG(
     schedule=timedelta(minutes=30),
      
 )
-def spotify_etl():
+extract = Extract()
+def extract_load():
     print('Job Initiated.')
-    extract = Extract()
-    result = extract.search_for_artist('ACDC')
-    spotify_pd = extract.get_songs_by_artist(result['id'])
-    load_snoflake(spotify_pd)
-    return spotify_pd    
+    artist_track = extract.search_for_artist('ACDC')
+    return artist_track
+    #spotify_pd = extract.get_songs_by_artist(artist['id'])
+    #recommendation = extract.get_recommendation(artist['id'], artist['genres'], track['id'])
+    #engine, cur = load_snoflake_conn()
+    #GET_SONGS_BY_ARTIST(engine, cur, spotify_pd)
+    #recommendation(engine, cur, recommendation)
+def func1(ti):
+    # Pulls the return_value XCOM from "pushing_task"
+    artist_track = ti.xcom_pull(task_ids='Extract_Load')
+    spotify_pd = extract.get_songs_by_artist(artist_track['artist_id'])
+    engine, cur = load_snoflake_conn()
+    GET_SONGS_BY_ARTIST(engine, cur, spotify_pd)
+
+def func2(ti):
+    # Pulls the return_value XCOM from "pushing_task"
+    artist_track = ti.xcom_pull(task_ids='Extract_Load')
+    recommendation = extract.get_recommendation(artist_track['artist_id'], artist_track['artist_genres'], artist_track['track_id'])
+    engine, cur = load_snoflake_conn()
+    recommendation_load(engine, cur, recommendation)
 
 with dag:
     e1 = EmptyOperator(task_id="pre_processing")
 
-    Spotify_ETL = PythonOperator(
+    Spotify_EL = PythonOperator(
         task_id='Extract_Load',
-        python_callable=spotify_etl,
+        python_callable=extract_load,
+        dag = dag,
+    )
+    
+    Spotify_get_songs_by_artist = PythonOperator(
+        task_id='get_songs_by_artist',
+        python_callable=func1,
+        dag = dag,
+    )
+
+    Spotify_recommendation = PythonOperator(
+        task_id='get_recommendation',
+        python_callable=func2,
         dag = dag,
     )
 
@@ -78,4 +106,4 @@ with dag:
 
     e2 = EmptyOperator(task_id="post_processing")
     
-    e1 >> Spotify_ETL >> dbt_tg >> e2
+    e1 >> Spotify_EL >>  [Spotify_get_songs_by_artist, Spotify_recommendation] >> dbt_tg >> e2

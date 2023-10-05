@@ -1,12 +1,11 @@
 from sqlalchemy import create_engine
 from sqlalchemy.dialects import registry
 import pandas as pd 
-import json
 import snowflake.connector
 from snowflake.connector.pandas_tools import write_pandas
 from snowflake.connector.pandas_tools import pd_writer
 
-def load_snoflake(data):
+def load_snoflake_conn():
     snowflake_user='syang215'
     snowflake_password='siWqyg-7jizwa-xosdox'
     snowflake_account='zjb36759.us-east-1'
@@ -44,7 +43,8 @@ def load_snoflake(data):
 
     sql = "USE SCHEMA RAW"
     cur.execute(sql)
-
+    return engine, cur
+def GET_SONGS_BY_ARTIST(engine, cur, data):
     sql = """CREATE OR REPLACE TABLE GET_SONGS_BY_ARTIST
         (ALBUM string,
         ALBUM_ID string,
@@ -58,9 +58,32 @@ def load_snoflake(data):
     data.to_sql('get_songs_by_artist', engine, index=False, if_exists='replace', method=pd_writer)
     #success, nchunks, nrows, _ = write_pandas(ctx, data, 'GET_SONGS_BY_ARTIST')
     print('Successfully load the data to snowflake.')
-    #print('success: ', success)
-    #print('nchunks: ', nchunks)
-    #print('nrows: ', nrows)
+def recommendation_load(engine, cur, data):
+    sql = """CREATE OR REPLACE TABLE RECOMMENDATION
+        (ALBUM_TYPE string, 
+        ALBUM_TOTAL_TRACKS string, 
+        ALBUM_AVAILABLE_MARKETS string,
+        ALBUM_HREF string, 
+        ALBUM_id string, 
+        ALBUM_name string, 
+        ALBUM_release_date string,
+        ALBUM_release_date_precision string, 
+        ALBUM_URI string,
+        ARTIST_HREF string, 
+        ARTIST_ID string, 
+        ARTIST_NAME string, 
+        ARTIST_TYPE string, 
+        ARTIST_URI string)"""
+    cur.execute(sql)
+
+    # Write the data from the DataFrame to the table named "GET_SONGS_BY_ARTIST".
+    #change my columns in my dataframe to uppercase
+    data.columns = map(lambda x: str(x).upper(), data.columns)
+    data.to_sql('recommendation', engine, index=False, if_exists='replace', method=pd_writer)
+    #success, nchunks, nrows, _ = write_pandas(ctx, data, 'GET_SONGS_BY_ARTIST')
+    print('Successfully load the data to snowflake.')
+
+    
 '''
 import sqlite3
 

@@ -6,3 +6,8 @@ sources:
     schema: raw
     tables: 
       - name: get_songs_by_artist
+  - name: spotify
+    database: spotify
+    schema: raw
+    tables: 
+      - name: recommendation

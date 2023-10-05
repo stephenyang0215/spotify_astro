@@ -1,0 +1,1 @@
+SELECT album_total_tracks FROM {{source('spotify', 'recommendation')}}
