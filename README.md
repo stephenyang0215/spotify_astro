@@ -8,4 +8,5 @@ Spotify API End points in this project:<br />
 - [Get Artist's Top Tracks](https://developer.spotify.com/documentation/web-api/reference/get-an-artists-top-tracks)<br />
 - [Get Album Tracks](https://developer.spotify.com/documentation/web-api/reference/get-an-albums-tracks)<br />
 - [Get Recommendations](https://developer.spotify.com/documentation/web-api/reference/get-recommendations)<br />
+The following chart illustrates each task in the DAG starts from extracting Spotify data, uploading to Snowflake and running transformation by dbt.<br />
 ![DAG](DAG.png)
