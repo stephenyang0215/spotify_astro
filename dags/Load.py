@@ -1,17 +1,16 @@
 from sqlalchemy import create_engine
 from sqlalchemy.dialects import registry
-import pandas as pd 
+import os
 import snowflake.connector
-from snowflake.connector.pandas_tools import write_pandas
 from snowflake.connector.pandas_tools import pd_writer
 
 def load_snoflake_conn():
-    snowflake_user='syang215'
-    snowflake_password='siWqyg-7jizwa-xosdox'
-    snowflake_account='zjb36759.us-east-1'
-    snowflake_db='spotify'
-    snowflake_schema='raw'
-    snowflake_warehouse='compute_wh'
+    snowflake_user=os.getenv('snowflake_user')
+    snowflake_password=os.getenv('snowflake_password')
+    snowflake_account=os.getenv('snowflake_account')
+    snowflake_db=os.getenv('snowflake_db')
+    snowflake_schema=os.getenv('snowflake_schema')
+    snowflake_warehouse=os.getenv('snowflake_warehouse')
     ctx = snowflake.connector.connect(
         user=snowflake_user,
         password=snowflake_password,
@@ -44,45 +43,15 @@ def load_snoflake_conn():
     sql = "USE SCHEMA RAW"
     cur.execute(sql)
     return engine, cur
-def GET_SONGS_BY_ARTIST(engine, cur, data):
-    sql = """CREATE OR REPLACE TABLE GET_SONGS_BY_ARTIST
-        (ALBUM string,
-        ALBUM_ID string,
-        ALBUM_TYPE string,
-        TRACK string)"""
-    cur.execute(sql)
 
+def load_snowflake(engine, cur, data, sql, tb_name):
+    cur.execute(sql)
     # Write the data from the DataFrame to the table named "GET_SONGS_BY_ARTIST".
     #change my columns in my dataframe to uppercase
     data.columns = map(lambda x: str(x).upper(), data.columns)
-    data.to_sql('get_songs_by_artist', engine, index=False, if_exists='replace', method=pd_writer)
+    data.to_sql(tb_name, engine, index=False, if_exists='replace', method=pd_writer)
     #success, nchunks, nrows, _ = write_pandas(ctx, data, 'GET_SONGS_BY_ARTIST')
     print('Successfully load the data to snowflake.')
-def recommendation_load(engine, cur, data):
-    sql = """CREATE OR REPLACE TABLE RECOMMENDATION
-        (ALBUM_TYPE string, 
-        ALBUM_TOTAL_TRACKS string, 
-        ALBUM_AVAILABLE_MARKETS string,
-        ALBUM_HREF string, 
-        ALBUM_id string, 
-        ALBUM_name string, 
-        ALBUM_release_date string,
-        ALBUM_release_date_precision string, 
-        ALBUM_URI string,
-        ARTIST_HREF string, 
-        ARTIST_ID string, 
-        ARTIST_NAME string, 
-        ARTIST_TYPE string, 
-        ARTIST_URI string)"""
-    cur.execute(sql)
-
-    # Write the data from the DataFrame to the table named "GET_SONGS_BY_ARTIST".
-    #change my columns in my dataframe to uppercase
-    data.columns = map(lambda x: str(x).upper(), data.columns)
-    data.to_sql('recommendation', engine, index=False, if_exists='replace', method=pd_writer)
-    #success, nchunks, nrows, _ = write_pandas(ctx, data, 'GET_SONGS_BY_ARTIST')
-    print('Successfully load the data to snowflake.')
-
     
 '''
 import sqlite3

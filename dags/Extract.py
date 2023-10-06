@@ -4,6 +4,9 @@ import pandas as pd
 import requests
 from requests import get
 import os 
+import snowflake.connector
+from snowflake.connector.pandas_tools import write_pandas
+from snowflake.connector.pandas_tools import pd_writer
 
 class Extract(Auth_Token):
     def __init__(self):
@@ -13,6 +16,13 @@ class Extract(Auth_Token):
         self.album_type = []
         self.album_id = []
         self.song = []
+        self.snowflake_user = os.getenv('snowflake_user')
+        self.snowflake_user=os.getenv('snowflake_user')
+        self.snowflake_password=os.getenv('snowflake_password')
+        self.snowflake_account=os.getenv('snowflake_account')
+        self.snowflake_db=os.getenv('snowflake_db')
+        self.snowflake_schema=os.getenv('snowflake_schema')
+        self.snowflake_warehouse=os.getenv('snowflake_warehouse')
 
     def get_user_saved_track(self):
         url = f'https://api.spotify.com/v1/me/tracks'
@@ -51,7 +61,6 @@ class Extract(Auth_Token):
                                   'track_number':self.track_number, 'track_uri':self.track_uri})
         return pd_result
     def search_for_artist(self, artist_name):
-        #https://developer.spotify.com/documentation/web-api/reference/search
         url = 'https://api.spotify.com/v1/search'
         headers = self.get_auth_header()
         query = f'?q={artist_name}&type=track%2Cartist&limit=5'
@@ -64,7 +73,7 @@ class Extract(Auth_Token):
         json_artists = json_result['artists']['items'][0]
         json_tracks = json_result['tracks']['items'][0]
         return {'artist_id':json_artists['id'], 'artist_genres':json_artists['genres'], 'track_id':json_tracks['id']}
-        #return json_result['artists']['items'][0], json_result['tracks']['items'][0]
+    
     def get_songs_by_artist(self, artist_id):
         #https://developer.spotify.com/documentation/web-api/reference/get-an-artists-top-tracks
         url = f'https://api.spotify.com/v1/artists/{artist_id}/top-tracks?country=US'
@@ -84,17 +93,34 @@ class Extract(Auth_Token):
         pd_result = pd.DataFrame({'album': self.album, 'album_id':self.album_id, 'album_type':self.album_type, 'track': self.song})
         return pd_result
     
-    def get_track_by_album(self, spotify_pd):
-        for album_id in spotify_pd['album'].unique():
-            album_name = spotify_pd[spotify_pd['album_id']==album_id]['album'].tolist()[0]
-            album_tracks = []
-            url = f'https://api.spotify.com/v1/albums/{album_id}/tracks?market=US'
-            headers = self.get_auth_header()
-            result = get(url, headers=headers)
-            json_result = json.loads(result.content)['items']
-            for track in json_result:
-                album_tracks.append(track['name'])
-        return album_tracks
+    def get_track_by_album(self, album_id):
+        #https://developer.spotify.com/documentation/web-api/reference/get-an-albums-tracks
+        artists_album_lst = ['href', 'id', 'name', 'type', 'uri']
+        dict_artists = dict()
+        for col in artists_album_lst:
+            dict_artists[col] = []
+        track_album_lst = ['href', 'id', 'name', 'type', 'uri']
+        dict_tracks = dict()
+        for col in track_album_lst:
+            dict_tracks[col] = []
+        url = f'https://api.spotify.com/v1/albums/{album_id}/tracks?market=US'
+        headers = self.get_auth_header()
+        result = get(url, headers=headers)
+        json_result = json.loads(result.content)['items']
+        for track in json_result:
+            for col in artists_album_lst:
+                dict_artists[col].append(track['artists'][0][col])
+            for col in track_album_lst:
+                dict_tracks[col].append(track[col])
+        track_artist = pd.DataFrame.from_dict(dict_artists)
+        artists_album_lst = ['artists_'+col if 'artists' not in col else col for col in artists_album_lst]
+        track_artist.columns = artists_album_lst
+        track_album = pd.DataFrame.from_dict(dict_tracks)
+        track_album_lst = ['track_'+col if 'track' not in col else col for col in track_album_lst]
+        track_album.columns = track_album_lst
+        result = pd.concat([track_artist, track_album], axis=1)
+        result = result.loc[:,~result.columns.duplicated()].copy()
+        return result
     
     def get_recommendation(self, artist_id, genres, track_id):
         track_album_lst = ['album_type', 'total_tracks', 'available_markets', 'href', 'id', 'name', 'release_date', 'release_date_precision', 'type', 'uri']
@@ -127,10 +153,67 @@ class Extract(Auth_Token):
         result = pd.concat([album_result, artist_result], axis=1)
         result = result.loc[:,~result.columns.duplicated()].copy()
         return result
+    
+    def get_new_releases(self):
+        releases_album_lst = ['album_type', 'total_tracks', 'available_markets', 'href', 'id', 'name', 'release_date', 'release_date_precision', 'type', 'uri']
+        releases_artists_lst = ['href', 'id', 'name', 'type', 'uri']
+        dict_album = dict()
+        dict_artist = dict()
+        for col in releases_album_lst:
+            dict_album[col] = []
+        for col in releases_artists_lst:
+            dict_artist[col] = []
+        url = 'https://api.spotify.com/v1/browse/new-releases?country=US&limit=30'
+        headers = self.get_auth_header()
+        result = get(url, headers=headers)
+        json_result = json.loads(result.content)
+        if len(json_result)==0:
+            print('No release exists.')
+            return None
+        for album in json_result['albums']['items']:
+            for col in releases_album_lst:
+                dict_album[col].append(album[col])
+            for col in releases_artists_lst:
+                dict_artist[col].append(album['artists'][0][col])
+        album_result = pd.DataFrame.from_dict(dict_album)
+        releases_album_lst = ['album_'+col if 'album' not in col else col for col in releases_album_lst]
+        album_result.columns = releases_album_lst
+        artist_result = pd.DataFrame.from_dict(dict_artist)
+        releases_artists_lst = ['album_'+col if 'album' not in col else col for col in releases_artists_lst]
+        artist_result.columns = releases_artists_lst
+        result = pd.concat([album_result, artist_result], axis=1)
+        result = result.loc[:,~result.columns.duplicated()].copy()
+        return result
+    def export_from_snowflake(self):
+        album_id_lst = []
+        ctx = snowflake.connector.connect(
+            user=self.snowflake_user,
+            password=self.snowflake_password,
+            account=self.snowflake_account,
+            warehouse='compute_wh',
+            role='accountadmin',
+            database='spotify',
+            schema ='raw'
+            )
+        cs = ctx.cursor()
+        #Test connection to snowflake
+        sql = """SELECT 1"""
+        cs.execute(sql)
+        first_row = cs.fetchone()
+        assert first_row[0] == 1
+        #fetch the entire dataset        
+        sql = """SELECT ALBUM_ID FROM SPOTIFY.RAW.NEW_RELEASES"""
+        cs.execute(sql)
+        album_id_pd = cs.fetchall()
+        for row in album_id_pd:
+            album_id_lst.append(row[0])
+        return album_id_lst
    
 if __name__ == "__main__":
     extract = Extract()
-    artist_track = extract.search_for_artist('ACDC')
-    spotify_pd = extract.get_songs_by_artist(artist_track['artist_id'])
-    recommendation = extract.get_recommendation(artist_track['artist_id'], artist_track['artist_genres'], artist_track['track_id'])
-    print(recommendation.columns)
+    #artist_track = extract.search_for_artist('ACDC')
+    #spotify_pd = extract.get_songs_by_artist(artist_track['artist_id'])
+    #recommendation = extract.get_recommendation(artist_track['artist_id'], artist_track['artist_genres'], artist_track['track_id'])
+    #new_releases = extract.get_new_releases()
+    #album_id_pd = extract.export_from_snowflake()
+    #print(album_id_pd.columns)

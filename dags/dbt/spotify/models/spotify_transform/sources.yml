@@ -11,3 +11,13 @@ sources:
     schema: raw
     tables: 
       - name: recommendation
+  - name: spotify
+    database: spotify
+    schema: raw
+    tables: 
+      - name: new_releases
+  - name: spotify
+    database: spotify
+    schema: raw
+    tables: 
+      - name: new_releases_album_tracks
