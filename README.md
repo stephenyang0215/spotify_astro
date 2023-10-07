@@ -2,7 +2,7 @@
  
 This project is to develop the ETL pipeline for Spotify API. Demonstrating the concept of end-to-end solution for analytics use case.<br />
 It requires to extract the sources from [Spotify Developer](https://developer.spotify.com/) through the endpoints of the APIs. <br />
-In this case, it comes with Airflow as orchestration tool to properly manage each stage of the workflow and also helps to monitor the processing. <br />
+In this case, it comes with Airflow as orchestration tool to properly manage and monitor each stage of the workflow. Troubleshooting is way more convenient at any point. <br />
 Ensuring its quality and completeness all the way loaded to the SnowFlake database. <br />
 DBT comes into place as transformation tool once the datasets are loaded to snowflake database. <br />
 ![Project Structure](Project_Structure.png)
