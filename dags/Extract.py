@@ -5,18 +5,10 @@ import requests
 from requests import get
 import os 
 import snowflake.connector
-from snowflake.connector.pandas_tools import write_pandas
-from snowflake.connector.pandas_tools import pd_writer
 
 class Extract(Auth_Token):
     def __init__(self):
         super().__init__()
-        self.album = []
-        self.album_tracks = []
-        self.album_type = []
-        self.album_id = []
-        self.song = []
-        self.snowflake_user = os.getenv('snowflake_user')
         self.snowflake_user=os.getenv('snowflake_user')
         self.snowflake_password=os.getenv('snowflake_password')
         self.snowflake_account=os.getenv('snowflake_account')
@@ -24,42 +16,6 @@ class Extract(Auth_Token):
         self.snowflake_schema=os.getenv('snowflake_schema')
         self.snowflake_warehouse=os.getenv('snowflake_warehouse')
 
-    def get_user_saved_track(self):
-        url = f'https://api.spotify.com/v1/me/tracks'
-        try:
-            headers = self.get_auth_header()
-            result = get(url, headers=headers)
-            result.raise_for_status()
-        except requests.exceptions.RequestException as e:
-            raise SystemExit(e)
-        
-        json_track = json.loads(result.content)['items']['track']
-        for track in json_track:
-            #album of the track
-            self.album_type = json_track['album']['album_type']
-            self.album_total_tracks = json_track['album']['total_tracks']
-            self.album_id = json_track['album']['id']
-            self.album_name = json_track['album']['name']
-            self.album_release_date = json_track['album']['release_date']
-            #artist of the track
-            self.artist_genre = json_track['artists']['genres']
-            self.artist_id = json_track['artists']['id']
-            self.artist_name = json_track['artists']['name']
-            self.artist_popularity = json_track['artists']['popularity']
-            self.artist_uri = json_track['artists']['uri']
-            #track
-            self.track_id = json_track['id']
-            self.track_name = json_track['name']
-            self.track_popularity = json_track['popularity']
-            self.track_number = json_track['track_number']
-            self.track_uri = json_track['uri']
-        pd_result = pd.DataFrame({'album_type':self.album_type , 'album_total_tracks':self.album_total_tracks, 'album_id':self.album_id,
-                                  'album_name': self.album_name, 'album_release_date':self.album_release_date, 
-                                  'artist_genre':self.artist_genre, 'artist_id': self.artist_id, 'artist_name':self.artist_name,
-                                  'artist_popularity':self.artist_popularity, 'artist_uri':self.artist_uri,
-                                  'track_id':self.track_id, 'track_name':self.track_name, 'track_popularity':self.track_popularity,
-                                  'track_number':self.track_number, 'track_uri':self.track_uri})
-        return pd_result
     def search_for_artist(self, artist_name):
         url = 'https://api.spotify.com/v1/search'
         headers = self.get_auth_header()
@@ -75,6 +31,10 @@ class Extract(Auth_Token):
         return {'artist_id':json_artists['id'], 'artist_genres':json_artists['genres'], 'track_id':json_tracks['id']}
     
     def get_songs_by_artist(self, artist_id):
+        album_lst = []
+        album_id_lst = []
+        album_type_lst = []
+        song_lst = []
         #https://developer.spotify.com/documentation/web-api/reference/get-an-artists-top-tracks
         url = f'https://api.spotify.com/v1/artists/{artist_id}/top-tracks?country=US'
         try:
@@ -86,11 +46,11 @@ class Extract(Auth_Token):
         
         json_result = json.loads(result.content)['tracks']
         for track in json_result:
-            self.album.append(track['album']['name'])
-            self.album_id.append(track['album']['id'])
-            self.album_type.append(track['album']['album_type'])
-            self.song.append(track['name'])
-        pd_result = pd.DataFrame({'album': self.album, 'album_id':self.album_id, 'album_type':self.album_type, 'track': self.song})
+            album_lst.append(track['album']['name'])
+            album_id_lst.append(track['album']['id'])
+            album_type_lst.append(track['album']['album_type'])
+            song_lst.append(track['name'])
+        pd_result = pd.DataFrame({'album': album_lst, 'album_id':album_id_lst, 'album_type':album_type_lst, 'track': song_lst})
         return pd_result
     
     def get_track_by_album(self, album_id):
@@ -120,6 +80,7 @@ class Extract(Auth_Token):
         track_album.columns = track_album_lst
         result = pd.concat([track_artist, track_album], axis=1)
         result = result.loc[:,~result.columns.duplicated()].copy()
+        result['album_id'] = album_id
         return result
     
     def get_recommendation(self, artist_id, genres, track_id):
@@ -184,8 +145,9 @@ class Extract(Auth_Token):
         result = pd.concat([album_result, artist_result], axis=1)
         result = result.loc[:,~result.columns.duplicated()].copy()
         return result
-    def export_from_snowflake(self):
-        album_id_lst = []
+    
+    def export_from_snowflake(self, feature, table_name):
+        id_lst = []
         ctx = snowflake.connector.connect(
             user=self.snowflake_user,
             password=self.snowflake_password,
@@ -201,13 +163,72 @@ class Extract(Auth_Token):
         cs.execute(sql)
         first_row = cs.fetchone()
         assert first_row[0] == 1
-        #fetch the entire dataset        
-        sql = """SELECT ALBUM_ID FROM SPOTIFY.RAW.NEW_RELEASES"""
+        #fetch the entire dataset  
+        sql = f"""SELECT {feature} FROM SPOTIFY.RAW.{table_name}"""
         cs.execute(sql)
-        album_id_pd = cs.fetchall()
-        for row in album_id_pd:
-            album_id_lst.append(row[0])
-        return album_id_lst
+        cs_tb = cs.fetchall()
+        for row in cs_tb:
+            id_lst.append(row[0])
+        return id_lst
+    
+    def get_featured_playlists(self):
+        playlist_track_lst = ['description', 'id', 'name', 'public', 'total', 'uri']
+        dict_playlist = dict()
+        for col in playlist_track_lst:
+            dict_playlist[col] = []
+        url = 'https://api.spotify.com/v1/browse/featured-playlists?country=US&limit=50'
+        headers = self.get_auth_header()
+        result = get(url, headers=headers)
+        json_result = json.loads(result.content)
+        if len(json_result)==0:
+            print('No playlist exists.')
+            return None
+        for playlist in json_result['playlists']['items']:
+            for col in playlist_track_lst:
+                if col == 'total':
+                    dict_playlist['total'].append(playlist['tracks']['total'])
+                else:
+                    dict_playlist[col].append(playlist[col])
+        featured_playlists = pd.DataFrame.from_dict(dict_playlist)
+        return featured_playlists
+    
+    def get_playlist(self, playlist_id):
+        album_lst = ['album_type', 'total_tracks', 'available_markets', 'id', 'name', 'release_date', 'type', 'uri']
+        album_dict = {}
+        for col in album_lst:
+            album_dict[col] = []
+        artist_lst = ['id', 'name', 'uri']
+        artist_dict = {}
+        for col in artist_lst:
+            artist_dict[col] = []
+        track_lst = ['id', 'name', 'popularity', 'uri']
+        track_dict = {}
+        for col in track_lst:
+            track_dict[col] = []
+        url = f'https://api.spotify.com/v1/playlists/{playlist_id}'
+        headers = self.get_auth_header()
+        result = get(url, headers=headers)
+        json_result = json.loads(result.content)
+        if len(json_result)==0:
+            print('No playlist exists.')
+            return None
+        for track in json_result['tracks']['items']:
+            for col in album_lst:
+                album_dict[col].append(track['track']['album'][col])
+            for col in artist_lst:
+                artist_dict[col].append(track['track']['artists'][0][col])
+            for col in track_lst:
+                track_dict[col].append(track['track'][col])
+        album_df = pd.DataFrame.from_dict(album_dict)
+        artist_df = pd.DataFrame.from_dict(artist_dict)
+        track_df = pd.DataFrame.from_dict(track_dict)
+        album_df.columns = ['album_'+col if 'album' not in col else col for col in album_lst]
+        artist_df.columns = ['artist_'+col if 'artist' not in col else col for col in artist_lst]
+        track_df.columns = ['track_'+col if 'track' not in col else col for col in track_lst]
+        result = pd.concat([album_df, artist_df, track_df], axis=1)
+        result = result.loc[:,~result.columns.duplicated()].copy()
+        result['total'] = json_result['tracks']['total']
+        return result
    
 if __name__ == "__main__":
     extract = Extract()
@@ -216,4 +237,46 @@ if __name__ == "__main__":
     #recommendation = extract.get_recommendation(artist_track['artist_id'], artist_track['artist_genres'], artist_track['track_id'])
     #new_releases = extract.get_new_releases()
     #album_id_pd = extract.export_from_snowflake()
-    #print(album_id_pd.columns)
+    #featured_playlists = extract.get_featured_playlists()
+    #print(featured_playlists.columns)
+    #result = extract.get_playlist('37i9dQZF1DX2Nc3B70tvx0')
+    id_lst = extract.export_from_snowflake('ID','FEATURED_PLAYLISTS')
+    print(id_lst)
+    '''
+    def get_user_saved_track(self):
+        url = f'https://api.spotify.com/v1/me/tracks'
+        try:
+            headers = self.get_auth_header()
+            result = get(url, headers=headers)
+            result.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            raise SystemExit(e)
+        
+        json_track = json.loads(result.content)['items']['track']
+        for track in json_track:
+            #album of the track
+            self.album_type = json_track['album']['album_type']
+            self.album_total_tracks = json_track['album']['total_tracks']
+            self.album_id = json_track['album']['id']
+            self.album_name = json_track['album']['name']
+            self.album_release_date = json_track['album']['release_date']
+            #artist of the track
+            self.artist_genre = json_track['artists']['genres']
+            self.artist_id = json_track['artists']['id']
+            self.artist_name = json_track['artists']['name']
+            self.artist_popularity = json_track['artists']['popularity']
+            self.artist_uri = json_track['artists']['uri']
+            #track
+            self.track_id = json_track['id']
+            self.track_name = json_track['name']
+            self.track_popularity = json_track['popularity']
+            self.track_number = json_track['track_number']
+            self.track_uri = json_track['uri']
+        pd_result = pd.DataFrame({'album_type':self.album_type , 'album_total_tracks':self.album_total_tracks, 'album_id':self.album_id,
+                                  'album_name': self.album_name, 'album_release_date':self.album_release_date, 
+                                  'artist_genre':self.artist_genre, 'artist_id': self.artist_id, 'artist_name':self.artist_name,
+                                  'artist_popularity':self.artist_popularity, 'artist_uri':self.artist_uri,
+                                  'track_id':self.track_id, 'track_name':self.track_name, 'track_popularity':self.track_popularity,
+                                  'track_number':self.track_number, 'track_uri':self.track_uri})
+        return pd_result
+        '''

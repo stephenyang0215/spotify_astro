@@ -58,29 +58,14 @@ dag = DAG(
 )
 extract = Extract()
 
-def export_from_snowflake():
-    album_id_pd = extract.export_from_snowflake()
+def export_new_releases_album_id():
+    album_id_pd = extract.export_from_snowflake('ALBUM_ID','NEW_RELEASES')
     return album_id_pd
 
 def search_for_artist():
     print('Job Initiated.')
     artist_track = extract.search_for_artist('ACDC')
     return artist_track
-
-def load_new_releases():
-    sql = """CREATE OR REPLACE TABLE new_releases
-        (album_type string, 
-        album_total_tracks string, 
-        album_available_markets string,
-        album_href string, 
-        album_id string, 
-        album_name string, 
-        album_release_date string,
-        album_release_date_precision string, 
-        album_uri string)"""
-    new_releases = extract.get_new_releases()
-    engine, cur = load_snoflake_conn()
-    load_snowflake(engine, cur, new_releases, sql, 'new_releases')
 
 def load_search_for_artist(ti):
     sql = """CREATE OR REPLACE TABLE GET_SONGS_BY_ARTIST
@@ -89,7 +74,7 @@ def load_search_for_artist(ti):
         ALBUM_TYPE string,
         TRACK string)"""
     # Pulls the return_value XCOM from "pushing_task"
-    artist_track = ti.xcom_pull(task_ids='Extract_Load')
+    artist_track = ti.xcom_pull(task_ids='extract_load_search_for_artist')
     spotify_pd = extract.get_songs_by_artist(artist_track['artist_id'])
     engine, cur = load_snoflake_conn()
     load_snowflake(engine, cur, spotify_pd, sql, 'get_songs_by_artist')
@@ -111,10 +96,25 @@ def load_recommendation(ti):
         ARTIST_TYPE string, 
         ARTIST_URI string)"""
     # Pulls the return_value XCOM from "pushing_task"
-    artist_track = ti.xcom_pull(task_ids='Extract_Load')
+    artist_track = ti.xcom_pull(task_ids='extract_load_search_for_artist')
     recommendation = extract.get_recommendation(artist_track['artist_id'], artist_track['artist_genres'], artist_track['track_id'])
     engine, cur = load_snoflake_conn()
     load_snowflake(engine, cur, recommendation, sql, 'recommendation')
+
+def load_new_releases():
+    sql = """CREATE OR REPLACE TABLE new_releases
+        (album_type string, 
+        album_total_tracks string, 
+        album_available_markets string,
+        album_href string, 
+        album_id string, 
+        album_name string, 
+        album_release_date string,
+        album_release_date_precision string, 
+        album_uri string)"""
+    new_releases = extract.get_new_releases()
+    engine, cur = load_snoflake_conn()
+    load_snowflake(engine, cur, new_releases, sql, 'new_releases')
 
 def new_releases_album_tracks_load(ti):
     sql = """CREATE OR REPLACE TABLE new_releases_album_tracks
@@ -127,57 +127,122 @@ def new_releases_album_tracks_load(ti):
         track_id string,
         track_name string, 
         track_type string,
-        track_uri string)"""
+        track_uri string,
+        album_id string)"""
     main_df = pd.DataFrame(columns=['artists_href', 'artists_id', 'artists_name', 'artists_type',
-       'artists_uri', 'track_href', 'track_id', 'track_name', 'track_type','track_uri'])
+       'artists_uri', 'track_href', 'track_id', 'track_name', 'track_type','track_uri', 'album_id'])
     # Pulls the return_value XCOM from "pushing_task"
-    album_id_lst = ti.xcom_pull(task_ids='new_releases_album_id')
+    album_id_lst = ti.xcom_pull(task_ids='export_new_releases_album_id')
     for album_id in album_id_lst:
         album_tracks = extract.get_track_by_album(album_id)
         main_df = pd.concat([main_df,album_tracks], ignore_index=True)
     engine, cur = load_snoflake_conn()
     load_snowflake(engine, cur, main_df, sql, 'new_releases_album_tracks')
-    
+
+def load_featured_playlists():
+    sql = """CREATE OR REPLACE TABLE featured_playlists
+        (
+            description string,
+            id string,  
+            name string, 
+            public string, 
+            total string, 
+            uri string
+        )
+        """
+    featured_playlists = extract.get_featured_playlists()
+    engine, cur = load_snoflake_conn()
+    load_snowflake(engine, cur, featured_playlists, sql, 'featured_playlists')
+
+def export_playlist_id():
+    playlist_id_pd = extract.export_from_snowflake('ID','FEATURED_PLAYLISTS')
+    return playlist_id_pd
+
+def extract_load_playlist_tracks(ti):
+    sql = """CREATE OR REPLACE TABLE featured_playlists_albums_artists_tracks
+        (album_type string, 
+        album_total_tracks string, 
+        album_available_markets string,
+        album_id string, 
+        album_name string, 
+        album_release_date string, 
+        album_uri string,
+        artist_id string, 
+        artist_name string, 
+        artist_uri string, 
+        track_id string, 
+        track_name string,
+        track_popularity string, 
+        track_uri string, 
+        total string)"""
+    main_df = pd.DataFrame(columns=['artists_href', 'artists_id', 'artists_name', 'artists_type',
+       'artists_uri', 'track_href', 'track_id', 'track_name', 'track_type','track_uri', 'album_id'])
+    # Pulls the return_value XCOM from "pushing_task"
+    playlist_id_lst = ti.xcom_pull(task_ids='export_playlist_id')
+    for playlist_id in playlist_id_lst:
+        playlist_album_tracks = extract.get_playlist(playlist_id)
+        main_df = pd.concat([main_df,playlist_album_tracks], ignore_index=True)
+    engine, cur = load_snoflake_conn()
+    load_snowflake(engine, cur, main_df, sql, 'featured_playlists_albums_artists_tracks')
+
 with dag:
     e1 = EmptyOperator(task_id="pre_processing")
 
-    spotify_load_new_releases = PythonOperator(
-        task_id='new_releases',
+    new_releases_album = PythonOperator(
+        task_id='extract_new_releases_album',
         python_callable=load_new_releases,
         dag = dag,
     )
 
-    spotify_new_releases_album_id = PythonOperator(
-        task_id='new_releases_album_id',
-        python_callable=export_from_snowflake,
+    new_releases_album_id = PythonOperator(
+        task_id='export_new_releases_album_id',
+        python_callable=export_new_releases_album_id,
         dag = dag,
     )
 
-    spotify_new_releases_album_tracks_load = PythonOperator(
-        task_id='new_release_album_track',
+    playlist_id = PythonOperator(
+        task_id='export_playlist_id',
+        python_callable=export_playlist_id,
+        dag = dag,
+    )
+
+    new_releases_album_tracks = PythonOperator(
+        task_id='load_new_release_album_track',
         python_callable=new_releases_album_tracks_load,
         dag = dag,
     )
     
-    Spotify_Extract = PythonOperator(
-        task_id='Extract_Load',
+    artist_track = PythonOperator(
+        task_id='extract_load_search_for_artist',
         python_callable=search_for_artist,
         dag = dag,
     )
     
-    spotify_load_get_songs_by_artist = PythonOperator(
-        task_id='get_songs_by_artist',
+    get_songs_by_artist = PythonOperator(
+        task_id='load_search_for_artist',
         python_callable=load_search_for_artist,
         dag = dag,
     )
 
-    spotify_load_recommendation = PythonOperator(
-        task_id='get_recommendation',
+    recommendation_album_artist = PythonOperator(
+        task_id='load_recommendation_album_artist',
         python_callable=load_recommendation,
         dag = dag,
     )
 
-    dbt_songs_recommendation = DbtTaskGroup(
+    featured_playlists = PythonOperator(
+        task_id='extract_load_featured_playlists',
+        python_callable=load_featured_playlists,
+        dag = dag,
+    )
+
+    featured_playlists_albums_tracks = PythonOperator(
+        task_id='extract_load_featured_playlists_albums_tracks',
+        python_callable=extract_load_playlist_tracks,
+        dag = dag,
+    )
+
+    dbt_enrich = DbtTaskGroup(
         group_id="DBT_Transform",
         project_config=ProjectConfig(DBT_PROJECT_PATH),
         profile_config=profile_config,
@@ -186,6 +251,8 @@ with dag:
 
     e2 = EmptyOperator(task_id="post_processing")
     
-    e1 >> spotify_load_new_releases >> spotify_new_releases_album_id >> spotify_new_releases_album_tracks_load
-    e1 >> Spotify_Extract >> [spotify_load_get_songs_by_artist, spotify_load_recommendation] 
-    [spotify_new_releases_album_tracks_load, spotify_load_recommendation] >> dbt_songs_recommendation >> e2
+    e1 >> featured_playlists >> playlist_id >> featured_playlists_albums_tracks
+    e1 >> new_releases_album >> new_releases_album_id >> new_releases_album_tracks
+    e1 >> artist_track >> get_songs_by_artist
+    e1 >> artist_track >> recommendation_album_artist
+    [featured_playlists_albums_tracks, new_releases_album_tracks, recommendation_album_artist, get_songs_by_artist] >> dbt_enrich >> e2
