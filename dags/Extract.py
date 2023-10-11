@@ -5,6 +5,8 @@ import requests
 from requests import get
 import os 
 import snowflake.connector
+from Load import load_snoflake_conn, test_load, verify_internal_stage
+
 
 class Extract(Auth_Token):
     def __init__(self):
@@ -116,6 +118,8 @@ class Extract(Auth_Token):
         return result
     
     def get_new_releases(self):
+        #Get a list of new album releases featured in Spotify
+        #https://developer.spotify.com/documentation/web-api/reference/get-new-releases
         releases_album_lst = ['album_type', 'total_tracks', 'available_markets', 'href', 'id', 'name', 'release_date', 'release_date_precision', 'type', 'uri']
         releases_artists_lst = ['href', 'id', 'name', 'type', 'uri']
         dict_album = dict()
@@ -229,6 +233,23 @@ class Extract(Auth_Token):
         result = result.loc[:,~result.columns.duplicated()].copy()
         result['total'] = json_result['tracks']['total']
         return result
+    
+    def get_new_releases_json(self):
+        url = 'https://api.spotify.com/v1/browse/new-releases?country=US&limit=30'
+        headers = self.get_auth_header()
+        result = get(url, headers=headers)
+        json_result = json.loads(result.content)
+        result = json.dumps(json_result)
+        #write to json file
+        try:
+            
+            with open('files/new_releases.json', 'w') as fp2:
+                    fp2.write(result)
+            print(os.path.abspath('files/new_releases.json'))
+        except Exception as e:
+            print('Error: ' + str(e))
+        print('Successfully write to the json file!')
+        return list(json_result.keys())
    
 if __name__ == "__main__":
     extract = Extract()
@@ -240,8 +261,12 @@ if __name__ == "__main__":
     #featured_playlists = extract.get_featured_playlists()
     #print(featured_playlists.columns)
     #result = extract.get_playlist('37i9dQZF1DX2Nc3B70tvx0')
-    id_lst = extract.export_from_snowflake('ID','FEATURED_PLAYLISTS')
-    print(id_lst)
+    #id_lst = extract.export_from_snowflake('ID','FEATURED_PLAYLISTS')
+    column_lst = extract.get_new_releases_json()
+    engine, conn = load_snoflake_conn()
+    stage_message = verify_internal_stage(conn)
+    test_load(conn, 'new_releases_test', column_lst, 'new_releases.json')
+
     '''
     def get_user_saved_track(self):
         url = f'https://api.spotify.com/v1/me/tracks'

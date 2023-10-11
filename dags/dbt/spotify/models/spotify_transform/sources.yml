@@ -21,3 +21,8 @@ sources:
     schema: raw
     tables: 
       - name: new_releases_album_tracks
+  - name: spotify
+    database: spotify
+    schema: raw
+    tables: 
+      - name: new_releases_json

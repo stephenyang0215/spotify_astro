@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta
 from Extract import Extract
-from Load import load_snoflake_conn, load_snowflake
+from Load import load_snoflake_conn, load_snowflake, verify_internal_stage, staged_files_load, json_schema_auto, write_sql_file
 from airflow import DAG
 import pandas as pd
 from dotenv import load_dotenv
@@ -185,6 +185,15 @@ def extract_load_playlist_tracks(ti):
     engine, cur = load_snoflake_conn()
     load_snowflake(engine, cur, main_df, sql, 'featured_playlists_albums_artists_tracks')
 
+def extract_load_new_releases_json():
+    table_name = 'NEW_RELEASES_JSON'
+    column_lst = extract.get_new_releases_json()
+    _, conn = load_snoflake_conn()
+    verify_internal_stage(conn)
+    staged_files_load(conn, table_name, column_lst, 'new_releases.json')
+    sql = json_schema_auto(f"{os.environ['AIRFLOW_HOME']}"+'/files/new_releases.json', table_name)
+    write_sql_file(sql, f"{os.environ['AIRFLOW_HOME']}/dags/dbt/spotify/models/new_releases/{table_name.lower()}_FLATTEN.sql")
+
 with dag:
     e1 = EmptyOperator(task_id="pre_processing")
 
@@ -242,6 +251,12 @@ with dag:
         dag = dag,
     )
 
+    new_releases = PythonOperator(
+        task_id='extract_load_new_releases',
+        python_callable=extract_load_new_releases_json,
+        dag = dag,
+    )
+
     dbt_enrich = DbtTaskGroup(
         group_id="DBT_Transform",
         project_config=ProjectConfig(DBT_PROJECT_PATH),
@@ -253,6 +268,7 @@ with dag:
     
     e1 >> featured_playlists >> playlist_id >> featured_playlists_albums_tracks
     e1 >> new_releases_album >> new_releases_album_id >> new_releases_album_tracks
+    e1 >> new_releases
     e1 >> artist_track >> get_songs_by_artist
     e1 >> artist_track >> recommendation_album_artist
-    [featured_playlists_albums_tracks, new_releases_album_tracks, recommendation_album_artist, get_songs_by_artist] >> dbt_enrich >> e2
+    [featured_playlists_albums_tracks, new_releases_album_tracks, recommendation_album_artist, get_songs_by_artist, new_releases] >> dbt_enrich >> e2
