@@ -18,4 +18,5 @@ The following chart illustrates each task in the DAG starts from extracting Spot
 The features of Json formatting files are versatility and readability. 
 To better process the semi-structured data for transformation and further analysis, the module is developed with DFS algorithm traversing over the keys of json object layer by layer.
 It enables to automatically generate the unnested schema for json file and also waive the cost of hardcoding schema for each table.
+![Json Object](images/json_object.png)
 ![Shcema Tool](images/schema_tool.png)
