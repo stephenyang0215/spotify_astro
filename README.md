@@ -5,7 +5,7 @@ It requires to extract the sources from [Spotify Developer](https://developer.sp
 In this case, it comes with Airflow as orchestration tool to properly manage and monitor each stage of the workflow. Troubleshooting is way more convenient at any point. <br />
 Ensuring its quality and completeness all the way loaded to the SnowFlake database. <br />
 DBT comes into place as transformation tool once the datasets are loaded to snowflake database. <br />
-![Project Structure](images/Project_Structure.png)
+![Project Diagram](images/Project_Diagram.png)
 Spotify API End points in this project:<br />
 - [Search for Item](https://developer.spotify.com/documentation/web-api/reference/search)<br />
 - [Get Artist's Top Tracks](https://developer.spotify.com/documentation/web-api/reference/get-an-artists-top-tracks)<br />
