@@ -1,0 +1,21 @@
+version: 2
+
+sources:
+  - name: spotify
+    database: spotify
+    schema: raw
+    tables: 
+      - name: new_releases
+      - name: featured_playlists
+      - name: browse_categories
+      - name: browse_categories_playists
+      - name: featured_playlists_albums_artists_tracks
+      - name: new_releases_album_tracks  
+    
+  - name: spotify
+    database: spotify
+    schema: staging
+    tables:
+      - name: browse_categories_flatten
+      - name: featured_playlists_flatten
+      - name: new_releases_flatten    

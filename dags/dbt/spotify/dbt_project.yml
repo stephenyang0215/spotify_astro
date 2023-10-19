@@ -34,6 +34,15 @@ clean-targets:         # directories to be removed by `dbt clean`
 models:
   spotify:
     # Config indicated by + and applies to all files under models/example/
-    spotify_transform:
+    featured_playlists:
       +materialized: view
+      +schema: staging
+    new_releases:
+      +materialized: view
+      +schema: staging
+    browse_categories:
+      +materialized: view
+      +schema: staging
+    staging:
+      +materialized: table
       +schema: staging

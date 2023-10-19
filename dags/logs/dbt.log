@@ -1,0 +1,14 @@
+[0m17:35:37.164183 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'start', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x104d0c0d0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x106084e20>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x102a0a0d0>]}
+
+
+============================== 17:35:37.166679 | 4bed1348-f79b-4a97-b2cc-1d4d178a46ca ==============================
+[0m17:35:37.166679 [info ] [MainThread]: Running with dbt=1.5.4
+[0m17:35:37.166998 [debug] [MainThread]: running dbt with arguments {'printer_width': '80', 'indirect_selection': 'eager', 'log_cache_events': 'False', 'write_json': 'False', 'partial_parse': 'True', 'cache_selected_only': 'False', 'profiles_dir': '/Users/stephenyang/.dbt', 'debug': 'False', 'fail_fast': 'False', 'log_path': 'logs', 'version_check': 'True', 'warn_error': 'None', 'use_colors': 'True', 'use_experimental_parser': 'False', 'no_print': 'None', 'quiet': 'False', 'log_format': 'default', 'introspect': 'True', 'static_parser': 'True', 'warn_error_options': 'WarnErrorOptions(include=[], exclude=[])', 'target_path': 'None', 'send_anonymous_usage_stats': 'True'}
+[0m17:35:37.167258 [error] [MainThread]: Encountered an error:
+Runtime Error
+  No dbt_project.yml found at expected path /Users/stephenyang/Documents/spotify_astro/dags/dbt_project.yml
+  Verify that each entry within packages.yml (and their transitive dependencies) contains a file named dbt_project.yml
+  
+[0m17:35:37.167584 [debug] [MainThread]: Command `dbt run` failed at 17:35:37.167531 after 0.02 seconds
+[0m17:35:37.167744 [debug] [MainThread]: Sending event: {'category': 'dbt', 'action': 'invocation', 'label': 'end', 'context': [<snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x104d0c0d0>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x106084070>, <snowplow_tracker.self_describing_json.SelfDescribingJson object at 0x102a0a0d0>]}
+[0m17:35:37.167888 [debug] [MainThread]: Flushing usage events

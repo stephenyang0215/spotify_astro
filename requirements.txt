@@ -2,6 +2,8 @@
 astronomer-cosmos==1.1.1
 snowflake-connector-python
 snowflake-sqlalchemy
+dbt-core
+dbt-snowflake
 apache-airflow-providers-snowflake
 python-dotenv
 pandas

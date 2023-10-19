@@ -1,2 +1,4 @@
 project:
   name: spotify-astro
+webserver:
+  port: 8081

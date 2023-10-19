@@ -5,7 +5,7 @@ import requests
 from requests import get
 import os 
 import snowflake.connector
-from Load import load_snoflake_conn, test_load, verify_internal_stage
+from Load import load_snoflake_conn, verify_internal_stage
 
 
 class Extract(Auth_Token):
@@ -150,7 +150,7 @@ class Extract(Auth_Token):
         result = result.loc[:,~result.columns.duplicated()].copy()
         return result
     
-    def export_from_snowflake(self, feature, table_name):
+    def export_id_list(self, feature, schema, table_name):
         id_lst = []
         ctx = snowflake.connector.connect(
             user=self.snowflake_user,
@@ -159,7 +159,7 @@ class Extract(Auth_Token):
             warehouse='compute_wh',
             role='accountadmin',
             database='spotify',
-            schema ='raw'
+            schema =schema
             )
         cs = ctx.cursor()
         #Test connection to snowflake
@@ -167,14 +167,34 @@ class Extract(Auth_Token):
         cs.execute(sql)
         first_row = cs.fetchone()
         assert first_row[0] == 1
-        #fetch the entire dataset  
-        sql = f"""SELECT {feature} FROM SPOTIFY.RAW.{table_name}"""
+        #fetch the dataset  
+        sql = f"""SELECT DISTINCT {feature} FROM SPOTIFY.{schema}.{table_name}_FLATTEN"""
         cs.execute(sql)
         cs_tb = cs.fetchall()
         for row in cs_tb:
             id_lst.append(row[0])
         return id_lst
     
+    def get_category_playlists(self, category_id):
+        col_lst = ['description', 'href', 'id', 
+            'name', 'public', 'snapshot_id', 'type', 'uri']
+        dict_category_playlist = dict()
+        for col in col_lst:
+            dict_category_playlist[col] = []
+        url = f'https://api.spotify.com/v1/browse/categories/{category_id}/playlists?country=US&limit=50'
+        headers = self.get_auth_header()
+        result = get(url, headers=headers)
+        json_result = json.loads(result.content)
+        if len(json_result)==0:
+            print('No playlist exists.')
+            return None
+        for playlist in json_result['playlists']['items']:
+            if type(playlist) == dict:
+                for col in col_lst:
+                    dict_category_playlist[col].append(playlist[col])
+        category_playlists = pd.DataFrame.from_dict(dict_category_playlist)
+        return category_playlists
+
     def get_featured_playlists(self):
         playlist_track_lst = ['description', 'id', 'name', 'public', 'total', 'uri']
         dict_playlist = dict()
@@ -234,18 +254,16 @@ class Extract(Auth_Token):
         result['total'] = json_result['tracks']['total']
         return result
     
-    def get_new_releases_json(self):
-        url = 'https://api.spotify.com/v1/browse/new-releases?country=US&limit=30'
+    def extract_spotify_json_file(self, url, table_name):
         headers = self.get_auth_header()
         result = get(url, headers=headers)
         json_result = json.loads(result.content)
         result = json.dumps(json_result)
         #write to json file
         try:
-            
-            with open('files/new_releases.json', 'w') as fp2:
+            with open(f'files/{table_name}.json', 'w') as fp2:
                     fp2.write(result)
-            print(os.path.abspath('files/new_releases.json'))
+            print(os.path.abspath(f'files/{table_name}.json'))
         except Exception as e:
             print('Error: ' + str(e))
         print('Successfully write to the json file!')
@@ -253,19 +271,7 @@ class Extract(Auth_Token):
    
 if __name__ == "__main__":
     extract = Extract()
-    #artist_track = extract.search_for_artist('ACDC')
-    #spotify_pd = extract.get_songs_by_artist(artist_track['artist_id'])
-    #recommendation = extract.get_recommendation(artist_track['artist_id'], artist_track['artist_genres'], artist_track['track_id'])
-    #new_releases = extract.get_new_releases()
-    #album_id_pd = extract.export_from_snowflake()
-    #featured_playlists = extract.get_featured_playlists()
-    #print(featured_playlists.columns)
-    #result = extract.get_playlist('37i9dQZF1DX2Nc3B70tvx0')
-    #id_lst = extract.export_from_snowflake('ID','FEATURED_PLAYLISTS')
-    column_lst = extract.get_new_releases_json()
-    engine, conn = load_snoflake_conn()
-    stage_message = verify_internal_stage(conn)
-    test_load(conn, 'new_releases_test', column_lst, 'new_releases.json')
+    result = extract.get_category_playlists('0JQ5DAqbMKFQ00XGBls6ym')
 
     '''
     def get_user_saved_track(self):
