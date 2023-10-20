@@ -64,7 +64,7 @@ def staged_files_load(conn, table_name, column_lst, file_name):
     print('Successfully load the data from staged files to an existing table.')
 
 def write_sql_file(statement, name):
-    directory_path = os.path.join(f"{os.environ['AIRFLOW_HOME']}/dags/dbt/spotify/models/flatten", name)
+    directory_path = os.path.join(f"{os.environ['AIRFLOW_HOME']}/dags/dbt/spotify/models/staging", name)
     '''if not os.path.exists(directory_path):
         os.mkdir(directory_path) 
         print("Directory '% s' created" % name) '''

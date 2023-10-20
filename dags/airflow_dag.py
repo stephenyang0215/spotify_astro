@@ -73,8 +73,14 @@ def taskflow():
             elif table_name == 'featured_playlists':
                 data = extract.get_playlist(id)
             elif table_name == 'browse_categories':
-                data = extract.get_category_playlists(id)
-            main_df = pd.concat([main_df,data], ignore_index=True)
+                if any(i.isdigit() for i in id):
+                    data = extract.get_category_playlists(id)
+                else:
+                    data = None
+            try:
+                main_df = pd.concat([main_df,data], ignore_index=True)
+            except:
+                pass
         return main_df
 
     @task(task_id='load_table')
@@ -82,22 +88,6 @@ def taskflow():
         engine, cur = load_snoflake_conn()
         load_snowflake(engine, cur, table, sql, table_name)
         return 
-    
-    @task(task_id='bash_dbt')
-    def dbt_run(model):
-        GLOBAL_CLI_FLAGS = "--no-write-json"
-        dbt_verb = "run"
-        #model = node.split('.')[-1]
-        DBT_DIR = f"{os.environ['AIRFLOW_HOME']}/dags/dbt/spotify/models"
-        PROJECT_DIR = f"{os.environ['AIRFLOW_HOME']}/dags/dbt/spotify/dbt_project.yml"
-        BashOperator(
-                    task_id='test',
-                    bash_command=f"""
-                    cd {DBT_DIR} && dbt {GLOBAL_CLI_FLAGS} {dbt_verb} --target dev --select {model}
-                    """
-                )
-        print('Run DBT Seccessfully!')
-        return model
 
     browse_categories_sql = """CREATE OR REPLACE TABLE browse_categories_playists
             (collaborative string, 
@@ -146,7 +136,7 @@ def taskflow():
         'artists_uri', 'track_href', 'track_id', 'track_name', 'track_type','track_uri', 'album_id']
     featured_playlists_col_lst = ['artists_href', 'artists_id', 'artists_name', 'artists_type',
         'artists_uri', 'track_href', 'track_id', 'track_name', 'track_type','track_uri', 'album_id']
-
+    
     browse_categories = extract_load_json(table_name = 'browse_categories',
                                    url = 'https://api.spotify.com/v1/browse/categories?country=US&limit=50')
 
@@ -156,13 +146,34 @@ def taskflow():
     new_releases = extract_load_json(table_name = 'new_releases',
                                    url = 'https://api.spotify.com/v1/browse/new-releases?country=US&limit=30')
     
-    staging_model = dbt_run('staging')
+    dbt_verb = "run"
+    DBT_DIR = f"{os.environ['AIRFLOW_HOME']}/dags/dbt/spotify"
+    dbt_flatten_bash1 = BashOperator(
+                task_id='dbt_flatten_bash1',
+                bash_command=f"""source {os.environ['AIRFLOW_HOME']}/venv/bin/activate &&
+                cd {DBT_DIR} && dbt {dbt_verb} --models {browse_categories}_flatten
+                """
+            )
+    dbt_flatten_bash2 = BashOperator(
+                task_id='dbt_flatten_bash2',
+                bash_command=f"""source {os.environ['AIRFLOW_HOME']}/venv/bin/activate &&
+                cd {DBT_DIR} && dbt {dbt_verb} --models {featured_playlists}_flatten
+                """
+            )
+    dbt_flatten_bash3 = BashOperator(
+                task_id='dbt_flatten_bash3',
+                bash_command=f"""source {os.environ['AIRFLOW_HOME']}/venv/bin/activate &&
+                cd {DBT_DIR} && dbt {dbt_verb} --models {new_releases}_flatten
+                """
+            )
     
-    [browse_categories, featured_playlists, new_releases] >> staging_model
+    browse_categories_id_lst = export_id('CATEGORIES_ITEMS_ID', 'staging', 'browse_categories')
+    featured_playlists_id_lst = export_id('PLAYLISTS_ITEMS_ID', 'staging', 'featured_playlists')
+    new_releases_id_lst = export_id('ALBUMS_ITEMS_ID', 'staging', 'new_releases')
 
-    browse_categories_id_lst = export_id('CATEGORIES_ITEMS_ID', staging_model, 'browse_categories')
-    featured_playlists_id_lst = export_id('PLAYLISTS_ITEMS_ID',staging_model, 'featured_playlists')
-    new_releases_id_lst = export_id('ALBUMS_ITEMS_ID', staging_model, 'new_releases')
+    browse_categories >> dbt_flatten_bash1 >> browse_categories_id_lst
+    featured_playlists >> dbt_flatten_bash2 >> featured_playlists_id_lst
+    new_releases >> dbt_flatten_bash3 >> new_releases_id_lst
 
     load_task1 = concatenate_table(browse_categories_id_lst, browse_categories_col_lst, 'browse_categories')
     load_task2 = concatenate_table(featured_playlists_id_lst, featured_playlists_col_lst, 'featured_playlists')
@@ -172,13 +183,30 @@ def taskflow():
     load2 = load_table(load_task2, featured_playlists_sql, 'featured_playlists_albums_artists_tracks')
     load3 = load_table(load_task3, new_releases_sql, 'new_releases_album_tracks')
 
-    browse_categories_model = dbt_run('browse_categories')
-    featured_playlists_model = dbt_run('featured_playlists')
-    new_releases_model = dbt_run('new_releases')
+    dbt_bash1 = BashOperator(
+                task_id='dbt_bash1',
+                bash_command=f"""source {os.environ['AIRFLOW_HOME']}/venv/bin/activate &&
+                cd {DBT_DIR} && dbt {dbt_verb} --select {browse_categories}
+                """
+            )
+    
+    dbt_bash2 = BashOperator(
+                task_id='dbt_bash2',
+                bash_command=f"""source {os.environ['AIRFLOW_HOME']}/venv/bin/activate &&
+                cd {DBT_DIR} && dbt {dbt_verb} --select {featured_playlists}
+                """
+            )
+    
+    dbt_bash3 = BashOperator(
+                task_id='dbt_bash3',
+                bash_command=f"""source {os.environ['AIRFLOW_HOME']}/venv/bin/activate &&
+                cd {DBT_DIR} && dbt {dbt_verb} --models {new_releases}
+                """
+            )
 
-    load1 >> browse_categories_model
-    load2 >> featured_playlists_model
-    load3 >> new_releases_model
+    load1 >> dbt_bash1
+    load2 >> dbt_bash2
+    load3 >> dbt_bash3
 
 taskflow()
 
