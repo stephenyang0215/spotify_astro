@@ -249,23 +249,31 @@ class Extract(Auth_Token):
         return category_playlists
 
     def get_featured_playlists(self):
+        # (API entpoint) Get a list of Spotify featured playlists.
+        # https://developer.spotify.com/documentation/web-api/reference/get-featured-playlists
         playlist_track_lst = ['description', 'id', 'name', 'public', 'total', 'uri']
+        # use dictionary to store all elements for the playlist object
         dict_playlist = dict()
         for col in playlist_track_lst:
             dict_playlist[col] = []
         url = 'https://api.spotify.com/v1/browse/featured-playlists?country=US&limit=50'
+        # Fetch the token
         headers = self.get_auth_header()
+        # Send the GET request
         result = get(url, headers=headers)
+        # # Deserialize the json object
         json_result = json.loads(result.content)
         if len(json_result)==0:
             print('No playlist exists.')
             return None
+        # Iterate over all playlists and retrieve its elements.
         for playlist in json_result['playlists']['items']:
             for col in playlist_track_lst:
                 if col == 'total':
                     dict_playlist['total'].append(playlist['tracks']['total'])
                 else:
                     dict_playlist[col].append(playlist[col])
+        # Use pandas dataframe to persist the records in a flattened manner
         featured_playlists = pd.DataFrame.from_dict(dict_playlist)
         return featured_playlists
     
