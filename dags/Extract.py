@@ -96,7 +96,7 @@ class Extract(Auth_Token):
                 dict_artists[col].append(track['artists'][0][col])
             for col in track_album_lst:
                 dict_tracks[col].append(track[col])
-        # Use pandas dataframe to persist the records in a flattened manner
+        # Use pandas dataframe to store the records in a flattened manner
         track_artist = pd.DataFrame.from_dict(dict_artists)
         artists_album_lst = ['artists_'+col if 'artists' not in col else col for col in artists_album_lst]
         track_artist.columns = artists_album_lst
@@ -109,33 +109,44 @@ class Extract(Auth_Token):
         return result
     
     def get_recommendation(self, artist_id, genres, track_id):
+        # (API entpoint)Get Recommendations
+        # https://developer.spotify.com/documentation/web-api/reference/get-recommendations
         track_album_lst = ['album_type', 'total_tracks', 'available_markets', 'href', 'id', 'name', 'release_date', 'release_date_precision', 'type', 'uri']
+        # use dictionary to store all elements for the recommendation album url
         dict_album = dict()
         for col in track_album_lst:
             dict_album[col] = []
         track_artist_lst = [ 'href', 'id', 'name', 'type', 'uri']
+        # use dictionary to store all elements for the recommendation track url
         dict_artist = dict()
         for col in track_artist_lst:
             dict_artist[col] = []
         url = f'https://api.spotify.com/v1/recommendations?seed_artists={artist_id}&seed_genres={genres}&seed_tracks={track_id}'
+        # Fetch the token
         headers = self.get_auth_header()
+        # Send the GET request
         result = get(url, headers=headers)
+        # Deserialize the json object
         json_result = json.loads(result.content)['tracks']
         if len(json_result)==0:
             print('No recommendation exists.')
             return None
-
+        # Iterate over all albums and its artist from the recommendation
         for track in json_result:
             for col in track_album_lst:
                 dict_album[col].append(track['album'][col])
             for col in track_artist_lst:
                 dict_artist[col].append(track['artists'][0][col])
+        # Use pandas dataframe to persist the records in a flattened manner
         album_result = pd.DataFrame.from_dict(dict_album)
+        # List of the albums information
         track_album_lst = ['album_'+col if 'album' not in col else col for col in track_album_lst]
         album_result.columns = track_album_lst
         artist_result = pd.DataFrame.from_dict(dict_artist)
+        #List of the artists information
         track_artist_lst = ['artist_'+col if 'artist' not in col else col for col in track_artist_lst]
         artist_result.columns = track_artist_lst
+        #Concatenate the dataframes for album and artist. Each record should has the matched album and artist.
         result = pd.concat([album_result, artist_result], axis=1)
         result = result.loc[:,~result.columns.duplicated()].copy()
         return result
