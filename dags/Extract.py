@@ -68,24 +68,32 @@ class Extract(Auth_Token):
         return pd_result
     
     def get_track_by_album(self, album_id):
-        #https://developer.spotify.com/documentation/web-api/reference/get-an-albums-tracks
+        # (API entpoint)Get Album Tracks
+        # https://developer.spotify.com/documentation/web-api/reference/get-an-albums-tracks
         artists_album_lst = ['href', 'id', 'name', 'type', 'uri']
+        #use dictionary to store all elements for the albums' url
         dict_artists = dict()
         for col in artists_album_lst:
             dict_artists[col] = []
         track_album_lst = ['href', 'id', 'name', 'type', 'uri']
+        # use dictionary to store all elements for the tracks' url
         dict_tracks = dict()
         for col in track_album_lst:
             dict_tracks[col] = []
         url = f'https://api.spotify.com/v1/albums/{album_id}/tracks?market=US'
+        # Fetch the token
         headers = self.get_auth_header()
+        # Send the GET request
         result = get(url, headers=headers)
+        # Deserialize the json object
         json_result = json.loads(result.content)['items']
+        # Iterate over all tracks from the album
         for track in json_result:
             for col in artists_album_lst:
                 dict_artists[col].append(track['artists'][0][col])
             for col in track_album_lst:
                 dict_tracks[col].append(track[col])
+        # Use pandas dataframe to persist the records in a flattened manner
         track_artist = pd.DataFrame.from_dict(dict_artists)
         artists_album_lst = ['artists_'+col if 'artists' not in col else col for col in artists_album_lst]
         track_artist.columns = artists_album_lst
