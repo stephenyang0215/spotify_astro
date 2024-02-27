@@ -196,6 +196,7 @@ class Extract(Auth_Token):
         return result
     
     def export_id_list(self, feature, schema, table_name):
+        #Snowflake connection configuration
         id_lst = []
         ctx = snowflake.connector.connect(
             user=self.snowflake_user,
@@ -221,18 +222,25 @@ class Extract(Auth_Token):
         return id_lst
     
     def get_category_playlists(self, category_id):
+        # (API entpoint) Get a list of categories used to tag items in Spotify.
+        # https://api.spotify.com/v1/browse/categories/
         col_lst = ['description', 'href', 'id', 
             'name', 'public', 'snapshot_id', 'type', 'uri']
+        # use dictionary to store all elements for the category object
         dict_category_playlist = dict()
         for col in col_lst:
             dict_category_playlist[col] = []
         url = f'https://api.spotify.com/v1/browse/categories/{category_id}/playlists?country=US&limit=50'
+        # Fetch the token
         headers = self.get_auth_header()
+        # Send the GET request
         result = get(url, headers=headers)
+        # Deserialize the json object
         json_result = json.loads(result.content)
         if len(json_result)==0:
             print('No playlist exists.')
             return None
+        # Iterate over all playlists from the category
         for playlist in json_result['playlists']['items']:
             if type(playlist) == dict:
                 for col in col_lst:
