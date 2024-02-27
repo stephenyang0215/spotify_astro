@@ -64,7 +64,10 @@ class Extract(Auth_Token):
             album_id_lst.append(track['album']['id'])
             album_type_lst.append(track['album']['album_type'])
             song_lst.append(track['name'])
-        pd_result = pd.DataFrame({'album': album_lst, 'album_id':album_id_lst, 'album_type':album_type_lst, 'track': song_lst})
+        pd_result = pd.DataFrame({'album': album_lst,
+                                  'album_id':album_id_lst,
+                                  'album_type':album_type_lst,
+                                  'track': song_lst})
         return pd_result
     
     def get_track_by_album(self, album_id):
