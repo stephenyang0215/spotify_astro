@@ -261,7 +261,7 @@ class Extract(Auth_Token):
         headers = self.get_auth_header()
         # Send the GET request
         result = get(url, headers=headers)
-        # # Deserialize the json object
+        # Deserialize the json object
         json_result = json.loads(result.content)
         if len(json_result)==0:
             print('No playlist exists.')
@@ -278,25 +278,35 @@ class Extract(Auth_Token):
         return featured_playlists
     
     def get_playlist(self, playlist_id):
-        album_lst = ['album_type', 'total_tracks', 'available_markets', 'id', 'name', 'release_date', 'type', 'uri']
+        # (API entpoint) Get a playlist owned by a Spotify user.
+        # https://developer.spotify.com/documentation/web-api/reference/get-playlist
+        album_lst = ['album_type', 'total_tracks', 'available_markets', 'id',
+                     'name', 'release_date', 'type', 'uri']
+        # use dictionary to store all elements for the playlist object
         album_dict = {}
         for col in album_lst:
             album_dict[col] = []
         artist_lst = ['id', 'name', 'uri']
+        # use dictionary to store all elements for the artist object
         artist_dict = {}
         for col in artist_lst:
             artist_dict[col] = []
         track_lst = ['id', 'name', 'popularity', 'uri']
+        # use dictionary to store all elements for the track object
         track_dict = {}
         for col in track_lst:
             track_dict[col] = []
         url = f'https://api.spotify.com/v1/playlists/{playlist_id}'
+        # Fetch the token
         headers = self.get_auth_header()
+        # Send the GET request
         result = get(url, headers=headers)
+        # Deserialize the json object
         json_result = json.loads(result.content)
         if len(json_result)==0:
             print('No playlist exists.')
             return None
+        # Iterate over all tracks and retrieve its elements.
         for track in json_result['tracks']['items']:
             for col in album_lst:
                 album_dict[col].append(track['track']['album'][col])
@@ -304,12 +314,15 @@ class Extract(Auth_Token):
                 artist_dict[col].append(track['track']['artists'][0][col])
             for col in track_lst:
                 track_dict[col].append(track['track'][col])
+        # Use pandas dataframe to store the records in a flattened manner
         album_df = pd.DataFrame.from_dict(album_dict)
         artist_df = pd.DataFrame.from_dict(artist_dict)
         track_df = pd.DataFrame.from_dict(track_dict)
         album_df.columns = ['album_'+col if 'album' not in col else col for col in album_lst]
         artist_df.columns = ['artist_'+col if 'artist' not in col else col for col in artist_lst]
         track_df.columns = ['track_'+col if 'track' not in col else col for col in track_lst]
+        # Concatenate the dataframes for album and artist.
+        # Each record should has the matched album, artist and track.
         result = pd.concat([album_df, artist_df, track_df], axis=1)
         result = result.loc[:,~result.columns.duplicated()].copy()
         result['total'] = json_result['tracks']['total']
