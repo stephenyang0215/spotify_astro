@@ -22,13 +22,13 @@ class Extract(Auth_Token):
         #(API entpoint)Search for Item
         #https://developer.spotify.com/documentation/web-api/reference/search
         url = 'https://api.spotify.com/v1/search'
-        #Set up the header
+        #Fetch the token
         headers = self.get_auth_header()
         query = f'?q={artist_name}&type=track%2Cartist&limit=5'
         query_url = url+query
-        #Send the request
+        #Send the GET request
         result = get(query_url, headers=headers)
-        #Serialize the json object
+        #Deserialize the json object
         json_result = json.loads(result.content)
         if len(json_result)==0:
             print('No artist with this name exists.')
@@ -41,20 +41,24 @@ class Extract(Auth_Token):
                 'track_id':json_tracks['id']}
     
     def get_songs_by_artist(self, artist_id):
+        # (API entpoint)Get Artist's Top Tracks
+        # https://developer.spotify.com/documentation/web-api/reference/get-an-artists-top-tracks
         album_lst = []
         album_id_lst = []
         album_type_lst = []
         song_lst = []
-        #https://developer.spotify.com/documentation/web-api/reference/get-an-artists-top-tracks
         url = f'https://api.spotify.com/v1/artists/{artist_id}/top-tracks?country=US'
         try:
+            # Fetch the token
             headers = self.get_auth_header()
+            # Send the GET request
             result = get(url, headers=headers)
             result.raise_for_status()
         except requests.exceptions.RequestException as e:
             raise SystemExit(e)
-        
+        # Deserialize the json object
         json_result = json.loads(result.content)['tracks']
+        # Extract the album names, ids, types and album track names for the artist
         for track in json_result:
             album_lst.append(track['album']['name'])
             album_id_lst.append(track['album']['id'])
