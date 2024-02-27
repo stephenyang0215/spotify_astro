@@ -156,7 +156,8 @@ class Extract(Auth_Token):
     def get_new_releases(self):
         # (API entpoint) Get a list of new album releases featured in Spotify
         # https://developer.spotify.com/documentation/web-api/reference/get-new-releases
-        releases_album_lst = ['album_type', 'total_tracks', 'available_markets', 'href', 'id', 'name', 'release_date', 'release_date_precision', 'type', 'uri']
+        releases_album_lst = ['album_type', 'total_tracks', 'available_markets', 'href',
+                              'id', 'name', 'release_date', 'release_date_precision', 'type', 'uri']
         releases_artists_lst = ['href', 'id', 'name', 'type', 'uri']
         # use dictionary to store all elements for the album object from the new release
         dict_album = dict()
