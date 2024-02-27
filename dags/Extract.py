@@ -19,7 +19,7 @@ class Extract(Auth_Token):
         self.snowflake_warehouse=os.getenv('snowflake_warehouse')
 
     def search_for_artist(self, artist_name):
-        #(API entpoint)Search for Item
+        #(API entpoint) Search for Item
         #https://developer.spotify.com/documentation/web-api/reference/search
         url = 'https://api.spotify.com/v1/search'
         #Fetch the token
@@ -41,7 +41,7 @@ class Extract(Auth_Token):
                 'track_id':json_tracks['id']}
     
     def get_songs_by_artist(self, artist_id):
-        # (API entpoint)Get Artist's Top Tracks
+        # (API entpoint) Get Artist's Top Tracks
         # https://developer.spotify.com/documentation/web-api/reference/get-an-artists-top-tracks
         album_lst = []
         album_id_lst = []
@@ -71,7 +71,7 @@ class Extract(Auth_Token):
         return pd_result
     
     def get_track_by_album(self, album_id):
-        # (API entpoint)Get Album Tracks
+        # (API entpoint) Get Album Tracks
         # https://developer.spotify.com/documentation/web-api/reference/get-an-albums-tracks
         artists_album_lst = ['href', 'id', 'name', 'type', 'uri']
         #use dictionary to store all elements for the albums' url
@@ -109,7 +109,7 @@ class Extract(Auth_Token):
         return result
     
     def get_recommendation(self, artist_id, genres, track_id):
-        # (API entpoint)Get Recommendations
+        # (API entpoint) Get Recommendations
         # https://developer.spotify.com/documentation/web-api/reference/get-recommendations
         track_album_lst = ['album_type', 'total_tracks', 'available_markets', 'href', 'id',
                            'name', 'release_date', 'release_date_precision', 'type', 'uri']
@@ -154,34 +154,42 @@ class Extract(Auth_Token):
         return result
     
     def get_new_releases(self):
-        #Get a list of new album releases featured in Spotify
-        #https://developer.spotify.com/documentation/web-api/reference/get-new-releases
+        # (API entpoint) Get a list of new album releases featured in Spotify
+        # https://developer.spotify.com/documentation/web-api/reference/get-new-releases
         releases_album_lst = ['album_type', 'total_tracks', 'available_markets', 'href', 'id', 'name', 'release_date', 'release_date_precision', 'type', 'uri']
         releases_artists_lst = ['href', 'id', 'name', 'type', 'uri']
+        # use dictionary to store all elements for the album object from the new release
         dict_album = dict()
+        # use dictionary to store all elements for the artist object from the new release
         dict_artist = dict()
         for col in releases_album_lst:
             dict_album[col] = []
         for col in releases_artists_lst:
             dict_artist[col] = []
         url = 'https://api.spotify.com/v1/browse/new-releases?country=US&limit=30'
+        # Fetch the token
         headers = self.get_auth_header()
+        # Send the GET request
         result = get(url, headers=headers)
+        # Deserialize the json object
         json_result = json.loads(result.content)
         if len(json_result)==0:
             print('No release exists.')
             return None
+        # Iterate over all albums and its artist from the new release
         for album in json_result['albums']['items']:
             for col in releases_album_lst:
                 dict_album[col].append(album[col])
             for col in releases_artists_lst:
                 dict_artist[col].append(album['artists'][0][col])
+        # Use pandas dataframe to persist the records in a flattened manner
         album_result = pd.DataFrame.from_dict(dict_album)
         releases_album_lst = ['album_'+col if 'album' not in col else col for col in releases_album_lst]
         album_result.columns = releases_album_lst
         artist_result = pd.DataFrame.from_dict(dict_artist)
         releases_artists_lst = ['album_'+col if 'album' not in col else col for col in releases_artists_lst]
         artist_result.columns = releases_artists_lst
+        # Concatenate the dataframes for album and artist. Each record should has the matched album and artist.
         result = pd.concat([album_result, artist_result], axis=1)
         result = result.loc[:,~result.columns.duplicated()].copy()
         return result
