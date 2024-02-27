@@ -19,18 +19,26 @@ class Extract(Auth_Token):
         self.snowflake_warehouse=os.getenv('snowflake_warehouse')
 
     def search_for_artist(self, artist_name):
+        #(API entpoint)Search for Item
+        #https://developer.spotify.com/documentation/web-api/reference/search
         url = 'https://api.spotify.com/v1/search'
+        #Set up the header
         headers = self.get_auth_header()
         query = f'?q={artist_name}&type=track%2Cartist&limit=5'
         query_url = url+query
+        #Send the request
         result = get(query_url, headers=headers)
+        #Serialize the json object
         json_result = json.loads(result.content)
         if len(json_result)==0:
             print('No artist with this name exists.')
             return None
+        #Extract the artist id, genres and tracks ID from the artist
         json_artists = json_result['artists']['items'][0]
         json_tracks = json_result['tracks']['items'][0]
-        return {'artist_id':json_artists['id'], 'artist_genres':json_artists['genres'], 'track_id':json_tracks['id']}
+        return {'artist_id':json_artists['id'],
+                'artist_genres':json_artists['genres'],
+                'track_id':json_tracks['id']}
     
     def get_songs_by_artist(self, artist_id):
         album_lst = []
