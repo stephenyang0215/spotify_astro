@@ -111,7 +111,8 @@ class Extract(Auth_Token):
     def get_recommendation(self, artist_id, genres, track_id):
         # (API entpoint)Get Recommendations
         # https://developer.spotify.com/documentation/web-api/reference/get-recommendations
-        track_album_lst = ['album_type', 'total_tracks', 'available_markets', 'href', 'id', 'name', 'release_date', 'release_date_precision', 'type', 'uri']
+        track_album_lst = ['album_type', 'total_tracks', 'available_markets', 'href', 'id',
+                           'name', 'release_date', 'release_date_precision', 'type', 'uri']
         # use dictionary to store all elements for the recommendation album url
         dict_album = dict()
         for col in track_album_lst:
@@ -121,7 +122,8 @@ class Extract(Auth_Token):
         dict_artist = dict()
         for col in track_artist_lst:
             dict_artist[col] = []
-        url = f'https://api.spotify.com/v1/recommendations?seed_artists={artist_id}&seed_genres={genres}&seed_tracks={track_id}'
+        url = (f'https://api.spotify.com/v1/recommendations?seed_artists={artist_id}'
+               f'&seed_genres={genres}&seed_tracks={track_id}')
         # Fetch the token
         headers = self.get_auth_header()
         # Send the GET request
