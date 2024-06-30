@@ -5,9 +5,7 @@ import os
 from requests import post
 class Auth_Token():
     def __init__(self):
-        #self.base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
         load_dotenv()
-        #os.path.join(self.base_dir, '.env'))
         self.client_id = os.getenv('client_id')
         self.client_secret = os.getenv('client_secret')
 
@@ -21,7 +19,7 @@ class Auth_Token():
             'Authorization': 'Basic ' + auth_base64,
             'Content-Type': 'application/x-www-form-urlencoded'
         }
-        data = {'grant_type':'client_credentials'}#, 'scope': 'user-library-read user-read-email'}
+        data = {'grant_type':'client_credentials'}
         result = post(url, headers=headers, data=data)
         json_result = json.loads(result.content)
         token = json_result['access_token']

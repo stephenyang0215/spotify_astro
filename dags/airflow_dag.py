@@ -1,22 +1,19 @@
 from datetime import datetime, timedelta
 from Extract import Extract
-from Load import load_snoflake_conn, load_snowflake, verify_internal_stage, staged_files_load, write_sql_file
+from Load import load_snoflake_conn, load_snowflake, verify_internal_stage, json_files_load, write_sql_file
 from schema_load import json_schema_auto
-from airflow import DAG
 import pandas as pd
-from dotenv import load_dotenv
 from airflow.decorators import dag, task
-from airflow.operators.python import PythonOperator
 from airflow.operators.bash_operator import BashOperator
-from airflow.operators.empty import EmptyOperator
-from cosmos import DbtTaskGroup, ProfileConfig, ProjectConfig, ExecutionConfig
+from cosmos import ProfileConfig
 from cosmos.profiles import SnowflakeUserPasswordProfileMapping
 import os
-import json
+import yaml
 
 extract = Extract()
 
-load_dotenv()
+with open('profiles.yml', 'r') as file:
+    yaml_content = yaml.safe_load(file)
 
 profile_config = ProfileConfig(
     profile_name="default",
@@ -24,15 +21,23 @@ profile_config = ProfileConfig(
     profile_mapping=SnowflakeUserPasswordProfileMapping(
         conn_id="db_conn",
         profile_args={
-            "schema": os.getenv('snowflake_schema'),
-            "database": os.getenv('snowflake_db'),
-            "account": os.getenv('snowflake_account'),
-            "login": os.getenv("snowflake_user"),
-            "password": os.getenv("snowflake_password"),
-            "warehouse": os.getenv("snowflake_warehouse"),
-            "role": os.getenv("snowflake_role")}
+            "schema": yaml_content['spotify']['outputs']['dev']['schema'],
+            "database": yaml_content['spotify']['outputs']['dev']['database'],
+            "account": yaml_content['spotify']['outputs']['dev']['account'],
+            "login": yaml_content['spotify']['outputs']['dev']['user'],
+            "password": yaml_content['spotify']['outputs']['dev']['password'],
+            "warehouse": yaml_content['spotify']['outputs']['dev']['warehouse'],
+            "role": yaml_content['spotify']['outputs']['dev']['role']}
     ),
 )
+
+with open('files/browse_categories_playlists.sql', 'r') as browse_categories, \
+    open('files/featured_playlists_albums_artists_tracks.sql', 'r') as featured_playlists, \
+    open('files/new_releases_album_tracks.sql', 'r') as new_releases: \
+
+    browse_categories_sql = browse_categories.read()
+    featured_playlists_sql = featured_playlists.read()
+    new_releases_sql = new_releases.read()
 
 default_args = {
     'owner': 'airflow',
@@ -54,18 +59,15 @@ def taskflow():
     def extract_load_json(table_name: str, url:str):
         column_lst = extract.extract_spotify_json_file(url, table_name)
         verify_internal_stage(conn)
-        staged_files_load(conn, table_name, column_lst, f'{table_name}.json')
+        json_files_load(conn, table_name, column_lst, f'{table_name}.json')
         sql = json_schema_auto(f"{os.environ['AIRFLOW_HOME']}"+f'/files/{table_name}.json', table_name)
         write_sql_file(sql, table_name)
         return table_name
-    
-    @task(task_id='export_id')
-    def export_id(target_column: str, schema: str, table_name: str):#parameters require upper format 
-            id_lst = extract.export_id_list(target_column, schema, table_name)
-            return id_lst
-    
+
+
     @task(task_id='concatenated_table')
-    def concatenate_table(id_lst: list, column_lst: list, table_name: str):
+    def concatenate_table(target_column: str, column_lst: list, table_name: str):
+        id_lst = extract.export_id_list(target_column, table_name)
         main_df = pd.DataFrame(columns=column_lst)
         for id in id_lst:
             if table_name == 'new_releases':
@@ -83,69 +85,24 @@ def taskflow():
                 pass
         return main_df
 
+
     @task(task_id='load_table')
     def load_table(table, sql, table_name):
         engine, cur = load_snoflake_conn()
         load_snowflake(engine, cur, table, sql, table_name)
         return 
 
-    browse_categories_sql = """CREATE OR REPLACE TABLE browse_categories_playists
-            (collaborative string, 
-            description string, 
-            href string,
-            id string, 
-            name string, 
-            public string, 
-            snapshot_id string,
-            type string, 
-            uri string)
-    """
-    new_releases_sql = """CREATE OR REPLACE TABLE new_releases_album_tracks
-            (artists_href string, 
-            artists_id string, 
-            artists_name string,
-            artists_type string, 
-            artists_uri string, 
-            track_href string, 
-            track_id string,
-            track_name string, 
-            track_type string,
-            track_uri string,
-            album_id string)"""
-    
-    featured_playlists_sql = """CREATE OR REPLACE TABLE featured_playlists_albums_artists_tracks
-            (album_type string, 
-            album_total_tracks string, 
-            album_available_markets string,
-            album_id string, 
-            album_name string, 
-            album_release_date string, 
-            album_uri string,
-            artist_id string, 
-            artist_name string, 
-            artist_uri string, 
-            track_id string, 
-            track_name string,
-            track_popularity string, 
-            track_uri string, 
-            total string)"""
-    
-    browse_categories_col_lst = ['collaborative', 'description', 'href', 'id', 
-            'name', 'public', 'snapshot_id', 'type', 'uri']
-    new_releases_col_lst = ['artists_href', 'artists_id', 'artists_name', 'artists_type',
-        'artists_uri', 'track_href', 'track_id', 'track_name', 'track_type','track_uri', 'album_id']
-    featured_playlists_col_lst = ['artists_href', 'artists_id', 'artists_name', 'artists_type',
-        'artists_uri', 'track_href', 'track_id', 'track_name', 'track_type','track_uri', 'album_id']
-    
+
+    # Fetch the json file for browse categories through endpoints
     browse_categories = extract_load_json(table_name = 'browse_categories',
                                    url = 'https://api.spotify.com/v1/browse/categories?country=US&limit=50')
-
+    # Fetch the json file for featured playlists through endpoints
     featured_playlists = extract_load_json(table_name = 'featured_playlists',
                                    url = 'https://api.spotify.com/v1/browse/featured-playlists?country=US&limit=50')
-    
+    # Fetch the json file for new releases through endpoints
     new_releases = extract_load_json(table_name = 'new_releases',
                                    url = 'https://api.spotify.com/v1/browse/new-releases?country=US&limit=30')
-    
+
     dbt_verb = "run"
     DBT_DIR = f"{os.environ['AIRFLOW_HOME']}/dags/dbt/spotify"
     dbt_flatten_bash1 = BashOperator(
@@ -166,22 +123,32 @@ def taskflow():
                 cd {DBT_DIR} && dbt {dbt_verb} --models {new_releases}_flatten
                 """
             )
+
+
+
+
+    browse_categories_col_lst = ['collaborative', 'description', 'href', 'id',
+                                 'name', 'public', 'snapshot_id', 'type', 'uri', 'category_id']
+
+    new_releases_col_lst = ['artists_href', 'artists_id', 'artists_name', 'artists_type',
+                            'artists_uri', 'track_href', 'track_id', 'track_name', 'track_type', 'track_uri',
+                            'album_id']
+
+    featured_playlists_col_lst = ['album_type', 'album_total_tracks', 'album_available_markets', 'album_id',
+                                  'album_name', 'album_release_date', 'album_uri', 'artist_id', 'artist_name',
+                                  'artist_uri', 'track_id', 'track_name', 'track_popularity', 'track_uri', 'total',
+                                  'playlist_id']
+
+
+
+    concat_task_1 = concatenate_table('CATEGORIES_ITEMS_ID', browse_categories_col_lst, 'browse_categories')
+    concat_task_2 = concatenate_table('PLAYLISTS_ITEMS_ID', featured_playlists_col_lst, 'featured_playlists')
+    concat_task_3 = concatenate_table('ALBUMS_ITEMS_ID', new_releases_col_lst, 'new_releases')
+
     
-    browse_categories_id_lst = export_id('CATEGORIES_ITEMS_ID', 'staging', 'browse_categories')
-    featured_playlists_id_lst = export_id('PLAYLISTS_ITEMS_ID', 'staging', 'featured_playlists')
-    new_releases_id_lst = export_id('ALBUMS_ITEMS_ID', 'staging', 'new_releases')
-
-    browse_categories >> dbt_flatten_bash1 >> browse_categories_id_lst
-    featured_playlists >> dbt_flatten_bash2 >> featured_playlists_id_lst
-    new_releases >> dbt_flatten_bash3 >> new_releases_id_lst
-
-    load_task1 = concatenate_table(browse_categories_id_lst, browse_categories_col_lst, 'browse_categories')
-    load_task2 = concatenate_table(featured_playlists_id_lst, featured_playlists_col_lst, 'featured_playlists')
-    load_task3 = concatenate_table(new_releases_id_lst, new_releases_col_lst, 'new_releases')
-
-    load1 = load_table(load_task1, browse_categories_sql, 'browse_categories_playists')
-    load2 = load_table(load_task2, featured_playlists_sql, 'featured_playlists_albums_artists_tracks')
-    load3 = load_table(load_task3, new_releases_sql, 'new_releases_album_tracks')
+    load_task_1 = load_table(concat_task_1, browse_categories_sql, 'browse_categories_playists')
+    load_task_2 = load_table(concat_task_2, featured_playlists_sql, 'featured_playlists_albums_artists_tracks')
+    load_task_3 = load_table(concat_task_3, new_releases_sql, 'new_releases_album_tracks')
 
     dbt_bash1 = BashOperator(
                 task_id='dbt_bash1',
@@ -204,49 +171,8 @@ def taskflow():
                 """
             )
 
-    load1 >> dbt_bash1
-    load2 >> dbt_bash2
-    load3 >> dbt_bash3
+    browse_categories >> dbt_flatten_bash1 >> concat_task_1 >> load_task_1 >> dbt_bash1
+    featured_playlists >> dbt_flatten_bash2 >> concat_task_2 >> load_task_2 >> dbt_bash2
+    new_releases >> dbt_flatten_bash3 >> concat_task_3 >> load_task_3 >> dbt_bash3
 
 taskflow()
-
-
-'''dbt_enrich = DbtTaskGroup(
-        group_id="DBT_Transform",
-        project_config=ProjectConfig(DBT_PROJECT_PATH),
-        profile_config=profile_config,
-        execution_config=execution_config)'''
-'''def load_manifest():
-        local_filepath = f"{os.environ['AIRFLOW_HOME']}/dags/dbt/target/manifest.json"
-        with open(local_filepath) as f:
-            data = json.load(f)
-
-        return data
-    def make_dbt_task(node, dbt_verb):
-        """Returns an Airflow operator either run and test an individual model"""
-        DBT_DIR = "/usr/local/airflow/dags/dbt"
-        GLOBAL_CLI_FLAGS = "--no-write-json"
-        model = node.split(".")[-1]
-
-        if dbt_verb == "run":
-            dbt_task = BashOperator(
-                task_id=node,
-                bash_command=f"""
-                cd {DBT_DIR} &&
-                dbt {GLOBAL_CLI_FLAGS} {dbt_verb} --target prod --models {model}
-                """,
-                dag=dag,
-            )
-
-        elif dbt_verb == "test":
-            node_test = node.replace("model", "test")
-            dbt_task = BashOperator(
-                task_id=node_test,
-                bash_command=f"""
-                cd {DBT_DIR} &&
-                dbt {GLOBAL_CLI_FLAGS} {dbt_verb} --target prod --models {model}
-                """,
-                dag=dag,
-            )
-
-        return dbt_task'''

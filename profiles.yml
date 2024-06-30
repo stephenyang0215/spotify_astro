@@ -1,13 +1,13 @@
 spotify:
   outputs:
     dev:
-      account: zjb36759.us-east-1
+      account: ydb76375.us-east-1
       database: spotify
-      password: siWqyg-7jizwa-xosdox
+      password: pyssyz-kudgEg-5gophy
       role: ACCOUNTADMIN
       schema: raw
       threads: 1
       type: snowflake
-      user: syang215
+      user: YANGSTEPHEN613
       warehouse: compute_wh
   target: dev

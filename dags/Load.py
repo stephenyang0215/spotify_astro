@@ -3,26 +3,36 @@ from sqlalchemy.dialects import registry
 import os
 import snowflake.connector
 from snowflake.connector.pandas_tools import pd_writer
-import json
+import yaml
 
 def load_snoflake_conn():
+    with open('profiles.yml', 'r') as file:
+        yaml_content = yaml.safe_load(file)
+
+    user=yaml_content['spotify']['outputs']['dev']['user']
+    password = yaml_content['spotify']['outputs']['dev']['password']
+    account = yaml_content['spotify']['outputs']['dev']['account']
+    warehouse = yaml_content['spotify']['outputs']['dev']['warehouse']
+    database = yaml_content['spotify']['outputs']['dev']['database']
+    schema = yaml_content['spotify']['outputs']['dev']['schema']
+
     conn = snowflake.connector.connect(
-        user=os.getenv('snowflake_user'),
-        password=os.getenv('snowflake_password'),
-        account=os.getenv('snowflake_account'),
-        warehouse=os.getenv('snowflake_warehouse'),
-        database=os.getenv('snowflake_db'),
-        schema=os.getenv('snowflake_schema')
+        user=user,
+        password=password,
+        account=account,
+        warehouse=warehouse,
+        database=database,
+        schema=schema
         )
     registry.register('snowflake', 'snowflake.sqlalchemy', 'dialect')
     engine = create_engine(
         'snowflake://{0}:{1}@{2}/{3}/{4}?warehouse={5}'.format(
-            os.getenv('snowflake_user'),
-            os.getenv('snowflake_password'),
-            os.getenv('snowflake_account'),
-            os.getenv('snowflake_db'),
-            os.getenv('snowflake_schema'),
-            os.getenv('snowflake_warehouse'))
+            user,
+            password,
+            account,
+            database,
+            schema,
+            warehouse)
         )
     
     sql_cmd = \
@@ -45,13 +55,16 @@ def verify_internal_stage(conn):
     cursor_list = conn.cursor().execute(sql_cmd).fetchall()
     print(cursor_list)
 
+# engine: SQLAlchemy engine
+# conn: Snowflake connector
+# data: JSON file
 def load_snowflake(engine, conn, data, sql, tb_name):
     conn.cursor().execute(sql)
     data.columns = map(lambda x: str(x).upper(), data.columns)
     data.to_sql(tb_name, engine, index=False, if_exists='replace', method=pd_writer)
     print('Successfully load the table to snowflake.')
 
-def staged_files_load(conn, table_name, column_lst, file_name):
+def json_files_load(conn, table_name, column_lst, file_name):
     sql_cmd =  f"PUT file://files/{file_name} @internal_stage;"\
                 f"CREATE OR REPLACE TABLE {table_name} \n("+ \
             ', '.join([item+' VARIANT' for item in column_lst])+');'

@@ -1,0 +1,17 @@
+CREATE OR REPLACE TABLE featured_playlists_albums_artists_tracks
+            (album_type string,
+            album_total_tracks string,
+            album_available_markets string,
+            album_id string,
+            album_name string,
+            album_release_date string,
+            album_uri string,
+            artist_id string,
+            artist_name string,
+            artist_uri string,
+            track_id string,
+            track_name string,
+            track_popularity string,
+            track_uri string,
+            total string,
+            playlist_id string)

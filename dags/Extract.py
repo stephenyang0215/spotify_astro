@@ -5,20 +5,14 @@ import requests
 from requests import get
 import os 
 import snowflake.connector
-from Load import load_snoflake_conn, verify_internal_stage
+import yaml
 
 
 class Extract(Auth_Token):
     def __init__(self):
         super().__init__()
-        self.snowflake_user=os.getenv('snowflake_user')
-        self.snowflake_password=os.getenv('snowflake_password')
-        self.snowflake_account=os.getenv('snowflake_account')
-        self.snowflake_db=os.getenv('snowflake_db')
-        self.snowflake_schema=os.getenv('snowflake_schema')
-        self.snowflake_warehouse=os.getenv('snowflake_warehouse')
 
-    def search_for_artist(self, artist_name):
+    def search_artist(self, artist_name):
         #(API entpoint) Search for Item
         #https://developer.spotify.com/documentation/web-api/reference/search
         url = 'https://api.spotify.com/v1/search'
@@ -40,7 +34,7 @@ class Extract(Auth_Token):
                 'artist_genres':json_artists['genres'],
                 'track_id':json_tracks['id']}
     
-    def get_songs_by_artist(self, artist_id):
+    def search_artist_songs(self, artist_id):
         # (API entpoint) Get Artist's Top Tracks
         # https://developer.spotify.com/documentation/web-api/reference/get-an-artists-top-tracks
         album_lst = []
@@ -195,17 +189,19 @@ class Extract(Auth_Token):
         result = result.loc[:,~result.columns.duplicated()].copy()
         return result
     
-    def export_id_list(self, feature, schema, table_name):
+    def export_id_list(self, feature, table_name):
+        with open('profiles.yml', 'r') as file:
+            yaml_content = yaml.safe_load(file)
         #Snowflake connection configuration
         id_lst = []
         ctx = snowflake.connector.connect(
-            user=self.snowflake_user,
-            password=self.snowflake_password,
-            account=self.snowflake_account,
-            warehouse='compute_wh',
-            role='accountadmin',
-            database='spotify',
-            schema =schema
+            user=yaml_content['spotify']['outputs']['dev']['user'],
+            password=yaml_content['spotify']['outputs']['dev']['password'],
+            account=yaml_content['spotify']['outputs']['dev']['account'],
+            warehouse=yaml_content['spotify']['outputs']['dev']['warehouse'],
+            role=yaml_content['spotify']['outputs']['dev']['role'],
+            database=yaml_content['spotify']['outputs']['dev']['database'],
+            schema='STAGING'
             )
         cs = ctx.cursor()
         #Test connection to snowflake
@@ -214,7 +210,7 @@ class Extract(Auth_Token):
         first_row = cs.fetchone()
         assert first_row[0] == 1
         #fetch the dataset  
-        sql = f"""SELECT DISTINCT {feature} FROM SPOTIFY.{schema}.{table_name}_FLATTEN"""
+        sql = f"""SELECT DISTINCT {feature} FROM SPOTIFY.STAGING.{table_name}_FLATTEN"""
         cs.execute(sql)
         cs_tb = cs.fetchall()
         for row in cs_tb:
@@ -246,6 +242,7 @@ class Extract(Auth_Token):
                 for col in col_lst:
                     dict_category_playlist[col].append(playlist[col])
         category_playlists = pd.DataFrame.from_dict(dict_category_playlist)
+        category_playlists['category_id'] = category_id
         return category_playlists
 
     def get_featured_playlists(self):
@@ -326,6 +323,7 @@ class Extract(Auth_Token):
         result = pd.concat([album_df, artist_df, track_df], axis=1)
         result = result.loc[:,~result.columns.duplicated()].copy()
         result['total'] = json_result['tracks']['total']
+        result['playlist_id'] = playlist_id
         return result
     
     def extract_spotify_json_file(self, url, table_name):
