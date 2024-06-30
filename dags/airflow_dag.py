@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta
 from Extract import Extract
 from Load import load_snoflake_conn, load_snowflake, verify_internal_stage, json_files_load, write_sql_file
-from schema_load import json_schema_auto
+from semi_struct_flat import json_schema_auto
 import pandas as pd
 from airflow.decorators import dag, task
 from airflow.operators.bash_operator import BashOperator
