@@ -5,16 +5,23 @@ import snowflake.connector
 from snowflake.connector.pandas_tools import pd_writer
 import yaml
 
-def load_snoflake_conn():
+# snoflake connection
+def load_snoflake_conn(user=None, password=None, account=None, warehouse=None, database=None, schema=None):
     with open('profiles.yml', 'r') as file:
         yaml_content = yaml.safe_load(file)
 
-    user=yaml_content['spotify']['outputs']['dev']['user']
-    password = yaml_content['spotify']['outputs']['dev']['password']
-    account = yaml_content['spotify']['outputs']['dev']['account']
-    warehouse = yaml_content['spotify']['outputs']['dev']['warehouse']
-    database = yaml_content['spotify']['outputs']['dev']['database']
-    schema = yaml_content['spotify']['outputs']['dev']['schema']
+    if user == None:
+        user=yaml_content['spotify']['outputs']['dev']['user']
+    if password == None:
+        password = yaml_content['spotify']['outputs']['dev']['password']
+    if account == None:
+        account = yaml_content['spotify']['outputs']['dev']['account']
+    if warehouse == None:
+        warehouse = yaml_content['spotify']['outputs']['dev']['warehouse']
+    if database == None:
+        database = yaml_content['spotify']['outputs']['dev']['database']
+    if schema == None:
+        schema = yaml_content['spotify']['outputs']['dev']['schema']
 
     conn = snowflake.connector.connect(
         user=user,
@@ -37,17 +44,18 @@ def load_snoflake_conn():
     
     sql_cmd = \
             "USE ROLE ACCOUNTADMIN;"    \
-            "CREATE DATABASE IF NOT EXISTS SPOTIFY;"    \
-            "USE DATABASE SPOTIFY;"     \
-            "CREATE SCHEMA IF NOT EXISTS RAW;"          \
-            "USE SCHEMA RAW;"           \
+            "CREATE DATABASE IF NOT EXISTS " + database.upper() + ";"   \
+            "USE DATABASE  " + database.upper() + ";"     \
+            "CREATE SCHEMA IF NOT EXISTS  " + schema.upper() + ";"      \
+            "USE SCHEMA  " + schema.upper() + ";"       \
             "CREATE OR REPLACE STAGE internal_stage;"   \
             "CREATE OR REPLACE FILE FORMAT my_json_format  \
                     TYPE = json;"
     
     conn.execute_string(sql_cmd)
     return engine, conn
-    
+
+# conn: Snowflake connector
 def verify_internal_stage(conn):
     sql_cmd = """
         List @internal_stage;

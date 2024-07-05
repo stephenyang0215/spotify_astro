@@ -35,6 +35,6 @@ playlists:next AS PLAYLISTS_NEXT,
 playlists:offset AS PLAYLISTS_OFFSET,
 playlists:previous AS PLAYLISTS_PREVIOUS,
 playlists:total AS PLAYLISTS_TOTAL
-FROM {{source('spotify', 'featured_playlists')}},
+FROM {{source('spotify', 'featured_playlist')}},
 LATERAL FLATTEN(input => PLAYLISTS:items) PLAYLISTS_ITEMS,
 LATERAL FLATTEN(input => PLAYLISTS_ITEMS.value:images) PLAYLISTS_ITEMS_IMAGES

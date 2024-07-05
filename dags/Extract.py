@@ -233,17 +233,24 @@ class Extract(Auth_Token):
         result = get(url, headers=headers)
         # Deserialize the json object
         json_result = json.loads(result.content)
-        if len(json_result)==0:
+        #Error Handling
+        if len(json_result)==0 or 'error' in json_result:
             print('No playlist exists.')
-            return None
+            category_playlists = pd.DataFrame.from_dict(dict_category_playlist)
+            for col in col_lst:
+                dict_category_playlist[col].append(None)
+            category_playlists['category_id'] = category_id
+            return category_playlists
+
         # Iterate over all playlists from the category
-        for playlist in json_result['playlists']['items']:
-            if type(playlist) == dict:
-                for col in col_lst:
-                    dict_category_playlist[col].append(playlist[col])
-        category_playlists = pd.DataFrame.from_dict(dict_category_playlist)
-        category_playlists['category_id'] = category_id
-        return category_playlists
+        else:
+            for playlist in json_result['playlists']['items']:
+                if type(playlist) == dict:
+                    for col in col_lst:
+                        dict_category_playlist[col].append(playlist[col])
+            category_playlists = pd.DataFrame.from_dict(dict_category_playlist)
+            category_playlists['category_id'] = category_id
+            return category_playlists
 
     def get_featured_playlists(self):
         # (API entpoint) Get a list of Spotify featured playlists.

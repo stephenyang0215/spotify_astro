@@ -31,13 +31,13 @@ profile_config = ProfileConfig(
     ),
 )
 
-with open('files/browse_categories_playlists.sql', 'r') as browse_categories, \
-    open('files/featured_playlists_albums_artists_tracks.sql', 'r') as featured_playlists, \
-    open('files/new_releases_album_tracks.sql', 'r') as new_releases: \
+with open('files/browse_category_playlist.sql', 'r') as browse_category, \
+    open('files/featured_playlist_album_artist_track.sql', 'r') as featured_playlist, \
+    open('files/new_release_album_track.sql', 'r') as new_release: \
 
-    browse_categories_sql = browse_categories.read()
-    featured_playlists_sql = featured_playlists.read()
-    new_releases_sql = new_releases.read()
+    browse_category_sql = browse_category.read()
+    featured_playlist_sql = featured_playlist.read()
+    new_release_sql = new_release.read()
 
 default_args = {
     'owner': 'airflow',
@@ -51,12 +51,11 @@ default_args = {
     'schedule_interval': '@once'
 }
 
-_, conn = load_snoflake_conn()
-
 @dag(schedule='@daily', start_date=datetime.now(), catchup=False,)
 def taskflow():
     @task(task_id='extract_load_json', retries=0)
-    def extract_load_json(table_name: str, url:str):
+    def extract_json(table_name: str, url:str):
+        _, conn = load_snoflake_conn(schema='raw')
         column_lst = extract.extract_spotify_json_file(url, table_name)
         verify_internal_stage(conn)
         json_files_load(conn, table_name, column_lst, f'{table_name}.json')
@@ -65,16 +64,16 @@ def taskflow():
         return table_name
 
 
-    @task(task_id='concatenated_table')
-    def concatenate_table(target_column: str, column_lst: list, table_name: str):
+    @task(task_id='sub_extraction')
+    def sub_extract(target_column: str, column_lst: list, table_name: str):
         id_lst = extract.export_id_list(target_column, table_name)
         main_df = pd.DataFrame(columns=column_lst)
         for id in id_lst:
-            if table_name == 'new_releases':
+            if table_name == 'new_release':
                 data = extract.get_track_by_album(id)
-            elif table_name == 'featured_playlists':
+            elif table_name == 'featured_playlist':
                 data = extract.get_playlist(id)
-            elif table_name == 'browse_categories':
+            elif table_name == 'browse_category':
                 if any(i.isdigit() for i in id):
                     data = extract.get_category_playlists(id)
                 else:
@@ -87,20 +86,20 @@ def taskflow():
 
 
     @task(task_id='load_table')
-    def load_table(table, sql, table_name):
-        engine, cur = load_snoflake_conn()
-        load_snowflake(engine, cur, table, sql, table_name)
+    def load(table, sql, table_name):
+        engine, conn = load_snoflake_conn(schema='staging')
+        load_snowflake(engine, conn, table, sql, table_name)
         return 
 
 
     # Fetch the json file for browse categories through endpoints
-    browse_categories = extract_load_json(table_name = 'browse_categories',
+    browse_category = extract_json(table_name = 'browse_category',
                                    url = 'https://api.spotify.com/v1/browse/categories?country=US&limit=50')
     # Fetch the json file for featured playlists through endpoints
-    featured_playlists = extract_load_json(table_name = 'featured_playlists',
+    featured_playlist = extract_json(table_name = 'featured_playlist',
                                    url = 'https://api.spotify.com/v1/browse/featured-playlists?country=US&limit=50')
     # Fetch the json file for new releases through endpoints
-    new_releases = extract_load_json(table_name = 'new_releases',
+    new_release = extract_json(table_name = 'new_release',
                                    url = 'https://api.spotify.com/v1/browse/new-releases?country=US&limit=30')
 
     dbt_verb = "run"
@@ -108,71 +107,65 @@ def taskflow():
     dbt_flatten_bash1 = BashOperator(
                 task_id='dbt_flatten_bash1',
                 bash_command=f"""source {os.environ['AIRFLOW_HOME']}/venv/bin/activate &&
-                cd {DBT_DIR} && dbt {dbt_verb} --models {browse_categories}_flatten
+                cd {DBT_DIR} && dbt {dbt_verb} --models {browse_category}_flatten
                 """
             )
     dbt_flatten_bash2 = BashOperator(
                 task_id='dbt_flatten_bash2',
                 bash_command=f"""source {os.environ['AIRFLOW_HOME']}/venv/bin/activate &&
-                cd {DBT_DIR} && dbt {dbt_verb} --models {featured_playlists}_flatten
+                cd {DBT_DIR} && dbt {dbt_verb} --models {featured_playlist}_flatten
                 """
             )
     dbt_flatten_bash3 = BashOperator(
                 task_id='dbt_flatten_bash3',
                 bash_command=f"""source {os.environ['AIRFLOW_HOME']}/venv/bin/activate &&
-                cd {DBT_DIR} && dbt {dbt_verb} --models {new_releases}_flatten
+                cd {DBT_DIR} && dbt {dbt_verb} --models {new_release}_flatten
                 """
             )
 
-
-
-
-    browse_categories_col_lst = ['collaborative', 'description', 'href', 'id',
+    browse_category_col_lst = ['collaborative', 'description', 'href', 'id',
                                  'name', 'public', 'snapshot_id', 'type', 'uri', 'category_id']
 
-    new_releases_col_lst = ['artists_href', 'artists_id', 'artists_name', 'artists_type',
+    new_release_col_lst = ['artists_href', 'artists_id', 'artists_name', 'artists_type',
                             'artists_uri', 'track_href', 'track_id', 'track_name', 'track_type', 'track_uri',
                             'album_id']
 
-    featured_playlists_col_lst = ['album_type', 'album_total_tracks', 'album_available_markets', 'album_id',
+    featured_playlist_col_lst = ['album_type', 'album_total_tracks', 'album_available_markets', 'album_id',
                                   'album_name', 'album_release_date', 'album_uri', 'artist_id', 'artist_name',
                                   'artist_uri', 'track_id', 'track_name', 'track_popularity', 'track_uri', 'total',
                                   'playlist_id']
 
+    sub_extract_1 = sub_extract('CATEGORIES_ITEMS_ID', browse_category_col_lst, 'browse_category')
+    sub_extract_2 = sub_extract('PLAYLISTS_ITEMS_ID', featured_playlist_col_lst, 'featured_playlist')
+    sub_extract_3 = sub_extract('ALBUMS_ITEMS_ID', new_release_col_lst, 'new_release')
 
-
-    concat_task_1 = concatenate_table('CATEGORIES_ITEMS_ID', browse_categories_col_lst, 'browse_categories')
-    concat_task_2 = concatenate_table('PLAYLISTS_ITEMS_ID', featured_playlists_col_lst, 'featured_playlists')
-    concat_task_3 = concatenate_table('ALBUMS_ITEMS_ID', new_releases_col_lst, 'new_releases')
-
-    
-    load_task_1 = load_table(concat_task_1, browse_categories_sql, 'browse_categories_playists')
-    load_task_2 = load_table(concat_task_2, featured_playlists_sql, 'featured_playlists_albums_artists_tracks')
-    load_task_3 = load_table(concat_task_3, new_releases_sql, 'new_releases_album_tracks')
+    load_1 = load(sub_extract_1, browse_category_sql, 'browse_category_playist')
+    load_2 = load(sub_extract_2, featured_playlist_sql, 'featured_playlist_album_artist_track')
+    load_3 = load(sub_extract_3, new_release_sql, 'new_release_track')
 
     dbt_bash1 = BashOperator(
                 task_id='dbt_bash1',
                 bash_command=f"""source {os.environ['AIRFLOW_HOME']}/venv/bin/activate &&
-                cd {DBT_DIR} && dbt {dbt_verb} --select {browse_categories}
+                cd {DBT_DIR} && dbt {dbt_verb} --select {browse_category}_agg --target prod
                 """
             )
     
     dbt_bash2 = BashOperator(
                 task_id='dbt_bash2',
                 bash_command=f"""source {os.environ['AIRFLOW_HOME']}/venv/bin/activate &&
-                cd {DBT_DIR} && dbt {dbt_verb} --select {featured_playlists}
+                cd {DBT_DIR} && dbt {dbt_verb} --select {featured_playlist}  --target prod
                 """
             )
     
     dbt_bash3 = BashOperator(
                 task_id='dbt_bash3',
                 bash_command=f"""source {os.environ['AIRFLOW_HOME']}/venv/bin/activate &&
-                cd {DBT_DIR} && dbt {dbt_verb} --models {new_releases}
+                cd {DBT_DIR} && dbt {dbt_verb} --models {new_release}_album_track  --target prod
                 """
             )
 
-    browse_categories >> dbt_flatten_bash1 >> concat_task_1 >> load_task_1 >> dbt_bash1
-    featured_playlists >> dbt_flatten_bash2 >> concat_task_2 >> load_task_2 >> dbt_bash2
-    new_releases >> dbt_flatten_bash3 >> concat_task_3 >> load_task_3 >> dbt_bash3
+    browse_category >> dbt_flatten_bash1 >> sub_extract_1 >> load_1 >> dbt_bash1
+    featured_playlist >> dbt_flatten_bash2 >> sub_extract_2 >> load_2 >> dbt_bash2
+    new_release >> dbt_flatten_bash3 >> sub_extract_3 >> load_3 >> dbt_bash3
 
 taskflow()

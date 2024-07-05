@@ -5,17 +5,24 @@ sources:
     database: spotify
     schema: raw
     tables: 
-      - name: new_releases
-      - name: featured_playlists
-      - name: browse_categories
-      - name: browse_categories_playists
-      - name: featured_playlists_albums_artists_tracks
-      - name: new_releases_album_tracks
-  - name: spotify
+      - name: new_release
+      - name: featured_playlist
+      - name: browse_category
+  - name: spotify_sg
     database: spotify
     schema: staging
     tables:
-      - name: featured_playlists_flatten
-      - name: browse_categories_flatten
-      - name: new_releases_flatten  
-  
+      - name: featured_playlist_flatten
+      - name: browse_category_flatten
+      - name: new_release_flatten
+      - name: new_release_track
+      - name: featured_playlist_album_artist_track
+      - name: browse_category_playist
+  - name: spotify_wh
+    database: spotify
+    schema: warehouse
+    tables:
+      - name: new_release_album_track
+      - name: browse_category_agg
+
+

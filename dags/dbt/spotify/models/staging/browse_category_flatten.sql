@@ -14,6 +14,6 @@ categories:next AS CATEGORIES_NEXT,
 categories:offset AS CATEGORIES_OFFSET,
 categories:previous AS CATEGORIES_PREVIOUS,
 categories:total AS CATEGORIES_TOTAL
-FROM {{source('spotify', 'browse_categories')}},
+FROM {{source('spotify', 'browse_category')}},
 LATERAL FLATTEN(input => CATEGORIES:items) CATEGORIES_ITEMS,
 LATERAL FLATTEN(input => CATEGORIES_ITEMS.value:icons) CATEGORIES_ITEMS_ICONS

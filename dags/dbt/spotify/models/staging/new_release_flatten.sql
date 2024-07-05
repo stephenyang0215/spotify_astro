@@ -31,7 +31,7 @@ albums:next AS ALBUMS_NEXT,
 albums:offset AS ALBUMS_OFFSET,
 albums:previous AS ALBUMS_PREVIOUS,
 albums:total AS ALBUMS_TOTAL
-FROM {{source('spotify', 'new_releases')}},
+FROM {{source('spotify', 'new_release')}},
 LATERAL FLATTEN(input => ALBUMS:items) ALBUMS_ITEMS,
 LATERAL FLATTEN(input => ALBUMS_ITEMS.value:artists) ALBUMS_ITEMS_ARTISTS,
 LATERAL FLATTEN(input => ALBUMS_ITEMS.value:images) ALBUMS_ITEMS_IMAGES
